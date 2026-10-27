@@ -25,3 +25,11 @@
              "timedOut" "failed" "unsupportedPlatform")))
   (check-true (hash-has-key? check 'exitCode))
   (check-true (hash-has-key? check 'truncated)))
+
+;; A child process may flood stdout; the capture budget is bounded even if
+;; the input stream is larger and must still be fully drained.
+(define input (open-input-bytes (make-bytes 70000 65)))
+(define captured (bounded-capture input))
+(check-equal? (string-length (hash-ref captured 'text)) 65536)
+(check-true (hash-ref captured 'truncated))
+(check-true (eof-object? (read-byte input)))
