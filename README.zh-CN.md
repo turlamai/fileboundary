@@ -6,7 +6,7 @@
 
 ## 状态
 
-**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。此分支新增 **Rivet/WinUI 3 原生 GUI 源码预览**，提供只读批量扫描摘要和过滤驱动诊断。是否能构建和打包以 [Windows GUI CI](.github/workflows/windows-gui.yml) 的实际结果为准。完整系统诊断、持久化清单和授权恢复验证**尚未实现**。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
+**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。此分支新增 **Rivet/WinUI 3 原生 GUI 源码预览**，提供只读批量扫描摘要和过滤驱动诊断。是否能构建和打包以 [Windows GUI CI](.github/workflows/windows-gui.yml) 的实际结果为准。完整系统诊断、持久化清单、**独立完整的恢复验收**和实际的厂商授权明文导出**尚未实现**；当前只提供基础的只读导出对比。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
 
 ### 无界面开发预览
 
@@ -30,6 +30,10 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 ```
 
 此命令**不会直接解密 E-SafeNet 密文**。退出码 1 为**尚未验证**，需要独立检查；退出码 4 表示检测到加密封装仍存在或可信明文哈希不匹配。详细说明见[存量文件授权恢复指南](docs/authorized-recovery.md)。不要凭此删除原始加密文件。
+
+### Windows GUI 测试包
+
+[Windows GUI CI](.github/workflows/windows-gui.yml) 会生成便携开发包 **FileBoundary-Windows-x64-dev**。界面支持只读扫描、过滤驱动诊断和新增的 **Check Export / 验证导出**，用于比较原密文与**已经正式授权导出的候选文件**。输出 `FAILED` 或 `UNVERIFIED` 都**不表示已能独立解密密文**。在受保护的电脑上安装之前，先阅读 [Windows 实机验收指南](docs/windows-qa.zh-CN.md)，不要删除原始加密文件。
 
 ## 背景
 

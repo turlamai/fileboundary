@@ -14,7 +14,9 @@
 
 (define (classify-header header)
   (cond
-    [(and (starts-with-bytes? header (bytes 98 20 35 101 155 0 101 1))
+    ;; The first four bytes are stable across the controlled PDF/DOCX pair.
+    ;; Bytes 4-7 vary between specimens; require both ASCII markers as well.
+    [(and (starts-with-bytes? header (bytes 98 20 35 101))
           (regexp-match? #rx#"E-SafeNet" header)
           (regexp-match? #rx#"LOCK" header))
      (values "esafenet-wrapper" "encrypted-recognized" "heuristic")]

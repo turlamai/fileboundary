@@ -6,7 +6,7 @@
 
 ## Status
 
-**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence and authorized recovery verification remain **not implemented**. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
+**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence, **full independent recovery verification**, and actual vendor-authorized plaintext export remain **not implemented**. Basic read-only export comparison is a preview feature. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
 
 ### Headless developer preview
 
@@ -30,6 +30,10 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 ```
 
 This does **not decrypt** E-SafeNet ciphertext. Exit 1 means **unverified** and further independent checks are required; exit 4 rejects a still-encrypted wrapper or trusted-plaintext-hash mismatch. Read the [authorized recovery guide](docs/authorized-recovery.md) for vendor prerequisites and evidence requirements. Never delete originals based on this result.
+
+### Windows GUI test package
+
+The portable **FileBoundary-Windows-x64-dev** artifact is produced by [Windows GUI CI](.github/workflows/windows-gui.yml). The GUI supports a read-only scan, Filter Manager diagnostics and now **Check Export**, which compares an operator-supplied, already-authorized export with an encrypted original. Its `FAILED` or `UNVERIFIED` status is **not** a standalone decryption result. Follow the [Windows QA guide](docs/windows-qa.md) before testing on a protected machine; do not delete encrypted originals.
 
 ## Background
 

@@ -16,6 +16,17 @@
                  #"E-SafeNet LOCK synthetic test only")))
 (check-equal? locked-signature "esafenet-wrapper")
 (check-equal? locked-verdict "encrypted-recognized")
+;; The field following the stable 4-byte wrapper magic varies by file type.
+(define-values (docx-signature docx-verdict _docx-evidence)
+  (classify-header
+   (bytes-append (bytes 98 20 35 101 188 1 68 0)
+                 #"E-SafeNet LOCK synthetic DOCX wrapper")))
+(check-equal? docx-signature "esafenet-wrapper")
+(check-equal? docx-verdict "encrypted-recognized")
+;; The prefix alone is not sufficient to claim an encrypted wrapper.
+(define-values (_bare-signature bare-verdict _bare-evidence)
+  (classify-header (bytes 98 20 35 101 188 1 68 0)))
+(check-equal? bare-verdict "unknown")
 
 (define tmp (make-temporary-file "fileboundary-inventory-~a" 'directory))
 (dynamic-wind

@@ -4,9 +4,10 @@
 (require racket/list
          racket/string
          "inventory.rkt"
-         "diagnostics.rkt")
+         "diagnostics.rkt"
+         "recovery.rkt")
 
-(provide scan-summary doctor-summary scan-statistics)
+(provide scan-summary doctor-summary verify-export-summary scan-statistics)
 
 (define (scan-statistics records)
   (define recognized
@@ -52,3 +53,29 @@
           (if (hash-ref report 'degraded)
               "Results incomplete; check privileges and local diagnostic tools."
               "Enumeration commands completed; this is not proof of file recovery.")))
+
+;; A presentation-friendly view of the same read-only authorized-export check
+;; used by the JSON CLI. Never expose sensitive path names or file contents.
+(define (verify-export-summary original-path exported-path)
+  (unless (and (string? original-path) (not (string=? "" (string-trim original-path)))
+               (string? exported-path) (not (string=? "" (string-trim exported-path))))
+    (error 'verify-export-summary "Both local file paths are required"))
+  (with-handlers ([exn:fail?
+                   (lambda (_)
+                     "Authorized export comparison: ERROR. Unable to inspect one or both files. Check local paths and permissions. No files were modified.")])
+    (define result (assess-authorized-export original-path exported-path))
+    (define bad? (equal? (hash-ref result 'verdict) "failed"))
+    (define reasons (hash-ref result 'reasonCodes))
+    (format (string-append
+             "Authorized export comparison: ~a.\n"
+             "Original recognized signature: ~a.\n"
+             "Export recognized signature: ~a.\n"
+             "Read view identical: ~a.\n"
+             "Reason codes: ~a.\n"
+             "No decryption performed. No plaintext exported.\n"
+             "Independently validate any candidate in an approved reader.")
+            (if bad? "FAILED" "UNVERIFIED")
+            (hash-ref (hash-ref result 'source) 'signature)
+            (hash-ref (hash-ref result 'export) 'signature)
+            (if (hash-ref result 'sameReadView) "yes" "no")
+            (string-join reasons ", "))))

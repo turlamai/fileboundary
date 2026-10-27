@@ -24,11 +24,14 @@ struct MainWindow : MainWindowT<MainWindow> {
                   Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void Doctor_Click(winrt::Windows::Foundation::IInspectable const& sender,
                     Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  void Verify_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                    Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
  private:
   winrt::fire_and_forget InitializeBackendAsync();
   void RunScanAsync();
   void RunDoctorAsync();
+  void RunVerifyAsync();
   void SetBusyUi(bool busy);
   void ShowResult(std::string const& message);
   void SetReadyUi();
