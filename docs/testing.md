@@ -31,7 +31,7 @@ For leak- and serialization-class bugs, the defense scans **produced artifacts**
 
 ## First executable Windows core suite
 
-The headless Racket developer preview has a Windows-only workflow at `.github/workflows/windows-core.yml` which invokes Racket compilation, `raco test` on two synthetic suites and a real CLI subprocess smoke. The workflow exercises only implemented `version` and `scan`, verifies the JSON envelope and failure exit codes, and does **not** claim GUI/driver/recovery coverage. A green run is required before merging the first code PR; an initially green codebase does not close #6 because many other layers remain.
+The headless Racket developer preview has a Windows-only workflow at `.github/workflows/windows-core.yml` which invokes Racket compilation, `raco test` on two synthetic suites and a real CLI subprocess smoke. The workflow exercises `version`, `scan`, and bounded read-only `doctor`; it verifies the JSON envelope and failure exit codes, and does **not** claim GUI, driver modification, or recovery coverage. A green run is required before merging the first code PR; an initially green codebase does not close #6 because many other layers remain.
 
 ## CI gates
 

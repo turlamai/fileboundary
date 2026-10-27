@@ -3,7 +3,8 @@
 ;; Headless, machine-readable FileBoundary CLI.
 (require json
          racket/list
-         "engine/inventory.rkt")
+         "engine/inventory.rkt"
+         "engine/diagnostics.rkt")
 
 (provide run-cli)
 
@@ -63,10 +64,23 @@
                          'recoveryVerdict "unverified")
                    warnings '()))
          (bad-usage)))]
-    [(or (equal? command "doctor") (equal? command "verify"))
+    [(equal? command "doctor")
+     (if (null? rest)
+         (let* ([report (doctor-report)]
+                [degraded? (hash-ref report 'degraded)]
+                [warnings
+                 (if degraded?
+                     (list (coded "diagnosticsIncomplete"
+                                  "One or more read-only checks could not complete; inspect per-check status."))
+                     '())])
+           (values (if degraded? 1 0)
+                   (if degraded? "partial" "ok")
+                   report warnings '()))
+         (bad-usage))]
+    [(equal? command "verify")
      (values 3 "error" (hash) '()
              (list (coded "notImplemented"
-                          "This command is planned but not implemented in this vertical slice.")))]
+                          "Authorized export verification is not implemented yet.")))]
     [else (bad-usage)]))
 
 (define (run-cli args)

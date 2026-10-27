@@ -19,7 +19,7 @@ racket src/cli.rkt scan "C:\\test-data" --max-files 500
 raco test tests/inventory-test.rkt tests/cli-test.rkt
 ```
 
-Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data; `doctor` and `verify` explicitly return `notImplemented`. See [implementation limits](docs/implementation-slice.md).
+Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a bounded read-only Filter Manager inventory; `verify` still explicitly returns `notImplemented`. See [implementation limits](docs/implementation-slice.md).
 
 ## Background
 
@@ -107,6 +107,10 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 ## Development
 
 `main` is the only long-lived branch. All changes land through pull requests; CI is the merge gate. Read [`AGENTS.md`](AGENTS.md) before contributing — human or machine. Workflow details: [docs/development.md](docs/development.md).
+
+## Windows filter diagnostics (developer preview)
+
+Run `racket src/cli.rkt doctor` in a Windows console. This command only invokes bounded, read-only `fltmc.exe filters` and `fltmc.exe instances`; each check records exit status, output truncation and timeout. A nonzero child result or missing elevation is **not** interpreted as no filters. The result can be `partial` with exit code 1. Full driver, service and injection inspection remains planned. `verify` remains unimplemented; no ciphertext recovery is claimed.
 
 ## License
 

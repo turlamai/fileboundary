@@ -28,9 +28,9 @@ jobs:
           variant: CS
           version: "9.3"
       - name: Compile headless engine and CLI
-        run: raco make src/engine/inventory.rkt src/cli.rkt
+        run: raco make src/engine/inventory.rkt src/engine/diagnostics.rkt src/cli.rkt
       - name: Run real unit and contract tests
-        run: raco test tests/inventory-test.rkt tests/cli-test.rkt
+        run: raco test tests/inventory-test.rkt tests/diagnostics-test.rkt tests/cli-test.rkt
       - name: CLI process smoke (real Windows process)
         shell: pwsh
         run: |
@@ -40,6 +40,10 @@ jobs:
           if ($json.schemaVersion -ne '1.0' -or $json.status -ne 'ok') { throw "unexpected envelope" }
           $bad = racket src/cli.rkt scan | ConvertFrom-Json
           if ($LASTEXITCODE -ne 2 -or $bad.status -ne 'error') { throw "usage errors not reflected in exit code" }
-          Write-Output "version and usage JSON contract smoke passed"
+          $doctor = racket src/cli.rkt doctor | ConvertFrom-Json
+          $doctorExit = $LASTEXITCODE
+          if ($doctorExit -notin @(0, 1)) { throw "doctor command failed unexpectedly" }
+          if ($doctor.data.scope -ne "read-only-filter-enumeration") { throw "unexpected doctor scope" }
+          Write-Output "version, doctor, and usage JSON smoke passed"
           # Earlier expected nonzero child exit is not the job exit status.
           exit 0

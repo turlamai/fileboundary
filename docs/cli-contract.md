@@ -1,6 +1,6 @@
 # CLI Contract
 
-**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` now emit the common envelope with documented exit codes and bounded results, while `doctor` and `verify` return coded `notImplemented` errors. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
+**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` emit the common envelope; `doctor` now returns read-only Windows filter enumeration with explicit per-check status, whereas `verify` returns coded `notImplemented`. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
 
 ## Principles
 
@@ -50,7 +50,7 @@ Field rules:
 
 ## Commands (planned unless explicitly stated)
 
-In the developer preview, `version` and `scan <path> [--max-files N]` are implemented. Scan returns file records directly in `data.files`; it does **not** yet write a manifest or verify plaintext. The `doctor` and `verify` names are recognized but return `notImplemented` / exit 3. All remaining behavior in the table below is planned.
+In the developer preview, `version`, `scan <path> [--max-files N]`, and bounded read-only `doctor` are implemented. Scan returns file records directly in `data.files`; it does **not** write a manifest or verify plaintext. Doctor returns the `filters` and `instances` check results with measured exit status, stdout/stderr, timeout and truncation indicators; failed/incomplete checks produce `partial` / exit 1. On non-Windows systems both checks return `unsupportedPlatform`, not an empty success. `verify` explicitly returns `notImplemented` / exit 3. All remaining behavior in the table below is planned.
 
 | Command | Purpose | Issue |
 |---|---|---|

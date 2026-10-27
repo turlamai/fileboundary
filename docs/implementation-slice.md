@@ -14,7 +14,7 @@ raco make src/engine/inventory.rkt src/cli.rkt
 raco test tests/inventory-test.rkt tests/cli-test.rkt
 ```
 
-Exactly one JSON envelope on stdout; process exit code: 0 complete, 1 partial, 2 invalid arguments, 3 runtime/unimplemented. Commands `doctor` and `verify` currently return a structured **notImplemented** error (3) — not faux diagnostics or decryption.
+Exactly one JSON envelope on stdout; process exit code: 0 complete, 1 partial, 2 invalid arguments, 3 runtime/unimplemented. Commands `doctor` now invokes only fixed, read-only `fltmc.exe filters` and `fltmc.exe instances` arguments on Windows and reports measured per-check exit status, timeout, output truncation, and elevation failures. It cannot infer the absence of filters from a failing command. `verify` still returns a structured **notImplemented** error (3); this slice cannot decrypt or certify exported documents.
 
 ## Deliberate nonclaims
 
@@ -28,7 +28,7 @@ Exactly one JSON envelope on stdout; process exit code: 0 complete, 1 partial, 2
 
 ## Follow-up work
 
-- Build the full inventory manifest/resume pipeline (#4), an independent structural verifier (#5), and user-approved diagnostics (#3).
+- Build the full inventory manifest/resume pipeline (#4), an independent structural verifier (#5), and expand diagnostics beyond bounded filter enumeration to driver/service/module inspection (#3).
 - Separate domain engine from UI, validate a native Rivet Windows host and packaged runtime (#2/#13).
 - Strengthen Windows filesystem traversal against races and long/Unicode paths; add resilience and cancellation for large directory scans (#10).
 - Schema tests currently assert the output envelope keys and exit code behavior; independent JSON Schema validator integration remains pending (#7).

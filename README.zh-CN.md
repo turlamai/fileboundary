@@ -19,7 +19,7 @@ racket src/cli.rkt scan "C:\\test-data" --max-files 500
 raco test tests/inventory-test.rkt tests/cli-test.rkt
 ```
 
-每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 和 `verify` 会明确返回 `notImplemented`。详见 [实现限制](docs/implementation-slice.md)。
+每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 现已支持只读 Filter Manager 清单，`verify` 仍明确返回 `notImplemented`。详见 [实现限制](docs/implementation-slice.md)。
 
 ## 背景
 
@@ -107,6 +107,10 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 ## 开发
 
 `main` 是唯一长期分支。所有变更经 pull request 进入；CI 是合并门禁。贡献前（无论人类还是机器）先读 [`AGENTS.md`](AGENTS.md)。流程细节见 [docs/development.md](docs/development.md)。
+
+## Windows 过滤驱动诊断（开发预览）
+
+Windows 控制台执行 `racket src/cli.rkt doctor`。目前只会执行限时、限输出的只读命令 `fltmc.exe filters` 和 `fltmc.exe instances`，分别报告退出状态、是否截断、是否超时。权限不足或命令失败**不能**解释为系统没有过滤驱动；此时会返回 `partial`（退出码 1）。更全面的驱动、服务和进程模块检查仍在规划中。`verify` 尚未实现，也不声称已能恢复密文。
 
 ## 许可
 
