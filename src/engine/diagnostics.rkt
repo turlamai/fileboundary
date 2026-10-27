@@ -54,6 +54,11 @@
 (define (run-bounded-child executable arguments [seconds timeout-seconds])
   (define started (now-ms))
   (with-handlers ([exn:fail? (lambda (_) (blank-result "launchFailed" started))])
+    ;; Some Windows subprocess configurations return a failed child status
+    ;; instead of throwing for a missing executable. Distinguish launch
+    ;; failure from a genuine diagnostic command failure before starting.
+    (unless (file-exists? executable)
+      (error 'run-bounded-child "diagnostic executable unavailable"))
     (define-values (process stdout stdin stderr)
       (apply subprocess #f #f #f executable arguments))
     (close-output-port stdin)
