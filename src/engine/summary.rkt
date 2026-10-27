@@ -2,6 +2,7 @@
 ;; Shared, deliberately conservative UI/CLI-facing summaries.
 ;; This module has no Rivet or native Windows UI dependency.
 (require racket/list
+         racket/string
          "inventory.rkt"
          "diagnostics.rkt")
 
@@ -18,7 +19,7 @@
 
 (define (scan-summary path #:max-files [max-files 200])
   (unless (and (string? path)
-               (not (regexp-match? #px"^\\s*$" path))
+               (not (string=? "" (string-trim path)))
                (<= (string-length path) 32767))
     (raise-argument-error 'scan-summary "nonempty path string with at most 32767 characters" path))
   (define-values (files skipped truncated?) (scan-tree path max-files))
