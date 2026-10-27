@@ -31,6 +31,10 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 
 This does **not decrypt** E-SafeNet ciphertext. Exit 1 means **unverified** and further independent checks are required; exit 4 rejects a still-encrypted wrapper or trusted-plaintext-hash mismatch. Read the [authorized recovery guide](docs/authorized-recovery.md) for vendor prerequisites and evidence requirements. Never delete originals based on this result.
 
+### Windows GUI test package
+
+The portable **FileBoundary-Windows-x64-dev** artifact is produced by [Windows GUI CI](.github/workflows/windows-gui.yml). The GUI supports a read-only scan, Filter Manager diagnostics and now **Check Export**, which compares an operator-supplied, already-authorized export with an encrypted original. Its `FAILED` or `UNVERIFIED` status is **not** a standalone decryption result. Follow the [Windows QA guide](docs/windows-qa.md) before testing on a protected machine; do not delete encrypted originals.
+
 ## Background
 
 The target machine runs third-party transparent file encryption software that combines mechanisms typical of the genre:
