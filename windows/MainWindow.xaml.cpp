@@ -255,9 +255,10 @@ void MainWindow::RunVerifyAsync() {
 void MainWindow::ShowResult(std::string const& message) {
   OutputText().Text(winrt::to_hstring(message));
   SetBusyUi(false);
-  if (message.rfind("Authorized export comparison: FAILED", 0) == 0) {
+  if (message.rfind("Authorized export comparison: FAILED", 0) == 0 ||
+      message.rfind("Authorized export comparison: ERROR", 0) == 0) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
-    StatusBar().Message(L"Export failed verification. No files were changed.");
+    StatusBar().Message(L"Export check failed or could not complete. No files were changed.");
   } else if (message.rfind("Authorized export comparison: UNVERIFIED", 0) == 0) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
     StatusBar().Message(L"Export is unverified, not confirmed as decrypted.");
