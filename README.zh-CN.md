@@ -6,7 +6,7 @@
 
 ## 状态
 
-**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。原生 GUI、完整系统诊断、持久化清单和授权恢复验证**尚未实现**。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
+**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。此分支新增 **Rivet/WinUI 3 原生 GUI 源码预览**，提供只读批量扫描摘要和过滤驱动诊断。是否能构建和打包以 [Windows GUI CI](.github/workflows/windows-gui.yml) 的实际结果为准。完整系统诊断、持久化清单和授权恢复验证**尚未实现**。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
 
 ### 无界面开发预览
 
@@ -68,7 +68,7 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 
 ## 技术方向
 
-当前开发预览的文件扫描引擎和 JSON CLI 使用 **Racket**；Windows GUI 首选验证 **Rivet / WinUI 3**，在实际测试表明有优势时可以改选 **Glaze / WebView2**。Windows 底层可使用 Racket FFI 或独立小型 C/C++ 用户态模块。详见[候选架构决策 ADR-0002](docs/decisions/adr-0002-prototype-stack.md)和[C#/WinForms 原型审查](docs/prototype-review.md)。原生 GUI 尚未实现或验收。通用 Racket 库公开发布需单独批准。
+当前开发预览的文件扫描引擎和 JSON CLI 使用 **Racket**；Windows GUI 首选验证 **Rivet / WinUI 3**，在实际测试表明有优势时可以改选 **Glaze / WebView2**。Windows 底层可使用 Racket FFI 或独立小型 C/C++ 用户态模块。详见[候选架构决策 ADR-0002](docs/decisions/adr-0002-prototype-stack.md)和[C#/WinForms 原型审查](docs/prototype-review.md)。本仓库已加入基于 Rivet v0.13.0 的 WinUI 3 宿主源码，构建证据见 [GUI 工作流](.github/workflows/windows-gui.yml) 和 [GUI 开发指南](docs/gui-development.md)。Windows 实机交互验收及文件恢复仍未完成。通用 Racket 库公开发布需单独批准。
 
 ## 平台要求
 
