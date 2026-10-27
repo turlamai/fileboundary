@@ -27,6 +27,10 @@ raco rivet verify
 
 `doctor` runs fixed, read-only `fltmc.exe filters` and `fltmc.exe instances`; it does not change drivers. `scan` reads the requested file or directory and inspects at most **200** files in one GUI operation, returning only a summary without source paths or document content. Invalid files, skipped entries and permission failures must not be conflated with plaintext. A path can contain sensitive data; do not paste GUI screenshots showing real paths into public issues.
 
+## Authorized-export UI (development preview)
+
+The FileBoundary WinUI window now has two path boxes: the first selects the encrypted original (also used for scanning), and the second selects an **already authorized exported file**. `Check Export` calls `verify-export-summary` over Rivet's typed, asynchronous RPC. It uses the same `assess-authorized-export` Racket engine as the CLI and displays `FAILED` or `UNVERIFIED`, never `verified`. No path, key material or document contents are returned to the UI in the RPC summary. The app never exports or decrypts files. Full acceptance instructions: [Windows QA](windows-qa.md).
+
 ## Not yet supported
 
 No GUI progress/cancel UI, persistent manifest, independent PDF/7z structural verification, authorized export validation, or installer is delivered by this slice. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
