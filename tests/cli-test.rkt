@@ -33,8 +33,8 @@
 (check-equal? (hash-ref (car (hash-ref missing 'errors)) 'code) "runtimeError")
 
 (define-values (doctor-code doctor) (invoke '("doctor")))
-(check-true (member doctor-code '(0 1)))
-(check-true (member (hash-ref doctor 'status) '("ok" "partial")))
+(check-not-false (member doctor-code '(0 1)))
+(check-not-false (member (hash-ref doctor 'status) '("ok" "partial")))
 (check-true (hash-has-key? (hash-ref doctor 'data) 'checks))
 (check-equal? (hash-ref (hash-ref doctor 'data) 'scope)
               "read-only-filter-enumeration")
