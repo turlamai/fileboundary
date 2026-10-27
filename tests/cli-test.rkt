@@ -55,3 +55,40 @@
        (check-equal? (hash-ref data 'recoveryVerdict) "unverified"))
      (check-false (regexp-match? #rx"not-encrypted, not-a-pdf" (jsexpr->string result)))))
  (lambda () (delete-directory/files tmp)))
+
+;; Authorized export verification is always evidence-based and never writes
+;; decrypted content to any destination itself.
+(define export-dir (make-temporary-file "fileboundary-verify-cli-~a" 'directory))
+(dynamic-wind
+ void
+ (lambda ()
+   (let ([original (build-path export-dir "locked.pdf")]
+         [exported (build-path export-dir "authorized-export.pdf")])
+     (call-with-output-file original
+       (lambda (out)
+         (write-bytes (bytes-append (bytes 98 20 35 101 155 0 101 1)
+                                    #"E-SafeNet LOCK synthetic") out))
+       #:mode 'binary #:exists 'error)
+     (call-with-output-file exported
+       (lambda (out)
+         (write-bytes #"%PDF-1.7\\nstartxref\\n0\\n%%EOF\\n" out))
+       #:mode 'binary #:exists 'error)
+     (let-values ([(code response)
+                   (invoke (list "verify" "--original" (path->string original)
+                                 "--exported" (path->string exported)))])
+       (check-equal? code 1)
+       (check-equal? (hash-ref response 'status) "partial")
+       (check-equal? (hash-ref (hash-ref response 'data) 'verdict) "unverified"))
+     (let-values ([(code response)
+                   (invoke (list "verify" "--original" (path->string original)
+                                 "--exported" (path->string original)))])
+       (check-equal? code 4)
+       (check-equal? (hash-ref response 'status) "error")
+       (check-equal? (hash-ref (hash-ref response 'data) 'verdict) "failed"))
+     (let-values ([(code response)
+                   (invoke (list "verify" "--original" (path->string original)
+                                 "--exported" (path->string exported)
+                                 "--trusted-plaintext-sha256" "bad"))])
+       (check-equal? code 2)
+       (check-equal? (hash-ref response 'status) "error"))))
+ (lambda () (delete-directory/files export-dir)))

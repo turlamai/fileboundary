@@ -1,6 +1,6 @@
 # CLI Contract
 
-**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` emit the common envelope; `doctor` now returns read-only Windows filter enumeration with explicit per-check status, whereas `verify` returns coded `notImplemented`. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
+**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` emit the common envelope; `doctor` now returns read-only Windows filter enumeration with explicit per-check status, and `verify` performs read-only comparison of an already-authorized export. This is not a decryption engine. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
 
 ## Principles
 
@@ -50,7 +50,7 @@ Field rules:
 
 ## Commands (planned unless explicitly stated)
 
-In the developer preview, `version`, `scan <path> [--max-files N]`, and bounded read-only `doctor` are implemented. Scan returns file records directly in `data.files`; it does **not** write a manifest or verify plaintext. Doctor returns the `filters` and `instances` check results with measured exit status, stdout/stderr, timeout and truncation indicators; failed/incomplete checks produce `partial` / exit 1. On non-Windows systems both checks return `unsupportedPlatform`, not an empty success. `verify` explicitly returns `notImplemented` / exit 3. All remaining behavior in the table below is planned.
+In the developer preview, `version`, `scan <path> [--max-files N]`, and bounded read-only `doctor` are implemented. Scan returns file records directly in `data.files`; it does **not** write a manifest or verify plaintext. Doctor returns the `filters` and `instances` check results with measured exit status, stdout/stderr, timeout and truncation indicators; failed/incomplete checks produce `partial` / exit 1. On non-Windows systems both checks return `unsupportedPlatform`, not an empty success. `verify --original <path> --exported <path> [--trusted-plaintext-sha256 HEX]` now implements **read-only authorized export comparison**, returning `unverified` / exit 1 for incomplete evidence or `failed` / exit 4 for an export still bearing the known encryption wrapper or mismatching the trusted digest. It **does not decrypt**, invoke third-party applications, or pronounce `verified`.  All remaining behavior in the table below is planned.
 
 | Command | Purpose | Issue |
 |---|---|---|

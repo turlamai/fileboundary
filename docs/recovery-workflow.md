@@ -38,6 +38,8 @@ Run the sanctioned export through the engine's authorized adapter. Outputs land 
 
 ## Stage 5 — Verify
 
+**Implementation progress:** `racket src/cli.rkt verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX]` now performs read-only, per-file comparison of an **operator-provided authorized export**, with conservative `unverified` (exit 1) or `failed` (exit 4) outcomes. It does **not** decrypt, run a third-party exporter, persist an audit log, or certify full structure or independent reader evidence; see [authorized recovery guide](authorized-recovery.md). The remainder of Stage 5 below is the required future acceptance contract.
+
 Each recovered file goes through the verification pipeline ([security.md](security.md#integrity-semantics)): format validation, independent open test, content-level check, fixture round-trip where a baseline exists. The pipeline emits `verified`, `unverified`, or `failed` — with evidence. `unverified` never auto-promotes.
 
 **Output:** verification records appended to the audit log; verdicts reflected in the manifest.

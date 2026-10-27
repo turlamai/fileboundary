@@ -4,7 +4,8 @@
 (require json
          racket/list
          "engine/inventory.rkt"
-         "engine/diagnostics.rkt")
+         "engine/diagnostics.rkt"
+         "engine/recovery.rkt")
 
 (provide run-cli)
 
@@ -17,7 +18,7 @@
 (define (bad-usage)
   (values 2 "error" (hash) '()
           (list (coded "invalidArguments"
-                       "Use version or scan <file-or-directory> [--max-files N]."))))
+                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX]."))))
 
 (define (dispatch args)
   (define command (if (null? args) "" (car args)))
@@ -78,9 +79,27 @@
                    report warnings '()))
          (bad-usage))]
     [(equal? command "verify")
-     (values 3 "error" (hash) '()
-             (list (coded "notImplemented"
-                          "Authorized export verification is not implemented yet.")))]
+     (let ([valid?
+            (and (member (length rest) '(4 6))
+                 (equal? (list-ref rest 0) "--original")
+                 (equal? (list-ref rest 2) "--exported")
+                 (or (= (length rest) 4)
+                     (and (equal? (list-ref rest 4) "--trusted-plaintext-sha256")
+                          (valid-sha256? (list-ref rest 5)))))])
+       (if valid?
+           (let* ([baseline (if (= (length rest) 6) (list-ref rest 5) #f)]
+                  [report (assess-authorized-export
+                           (list-ref rest 1) (list-ref rest 3) baseline)]
+                  [failed? (equal? (hash-ref report 'verdict) "failed")])
+             (if failed?
+                 (values 4 "error" report '()
+                         (list (coded "verificationFailed"
+                                      "The authorized export is still wrapped or mismatches the trusted plaintext digest.")))
+                 (values 1 "partial" report
+                         (list (coded "verificationIncomplete"
+                                      "Export comparison is not decryption or independent structural/reader verification."))
+                         '())))
+           (bad-usage)))]
     [else (bad-usage)]))
 
 (define (run-cli args)
