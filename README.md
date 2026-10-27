@@ -6,7 +6,7 @@
 
 ## Status
 
-**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). The native GUI, broad diagnostics, manifest persistence and authorized recovery verification are **not yet implemented**. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
+**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence and authorized recovery verification remain **not implemented**. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
 
 ### Headless developer preview
 
@@ -68,7 +68,7 @@ Anything the GUI can do, the CLI can do — agent parity is an architectural inv
 
 ## Technology direction
 
-The current experimental core and JSON CLI use **Racket**. The intended Windows-native GUI first candidate is **Rivet / WinUI 3**, with **Glaze / WebView2** as an evidence-based alternative. Low-level Windows work may use Racket FFI or narrowly scoped C/C++ user-mode components. See the [proposed ADR-0002](docs/decisions/adr-0002-prototype-stack.md) and [C#/WinForms source audit](docs/prototype-review.md). No Windows GUI has been built or approved yet. Extracting general-purpose Racket packages is optional and requires separate public release approval.
+The current experimental core and JSON CLI use **Racket**. The intended Windows-native GUI first candidate is **Rivet / WinUI 3**, with **Glaze / WebView2** as an evidence-based alternative. Low-level Windows work may use Racket FFI or narrowly scoped C/C++ user-mode components. See the [proposed ADR-0002](docs/decisions/adr-0002-prototype-stack.md) and [C#/WinForms source audit](docs/prototype-review.md). The source-controlled WinUI host now targets Rivet v0.13.0; see [Windows GUI development](docs/gui-development.md) and the actual GUI CI for build evidence. Interactive Windows acceptance and recovery are not yet complete. Extracting general-purpose Racket packages is optional and requires separate public release approval.
 
 ## Platform requirements
 
