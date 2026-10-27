@@ -21,6 +21,10 @@ Some diagnostics can only produce full results elevated on the real machine. CI 
 - **Encryption-like corpus** — high-entropy blobs, known-wrapper format samples, extension/structure mismatches — covering every classification label in [architecture.md](architecture.md#inventory-module--planned-4).
 - **Round-trip baseline** — where the transparent-encryption mechanism is available on the operator's machine: known plaintext written through it, hash recorded, kept **outside** the repository and referenced by hash in tests.
 
+## Owner-approved real encrypted specimen regression
+
+Under the single-file exception in [ADR-0003](decisions/ADR-0003-real-encrypted-sample-exception.md), `tests/real-wrapper-baseline-test.rkt` reads the existing `tests/fixtures/real-samples/esafenet-locked-sample.pdf` in **read-only** mode and checks its size, SHA-256, wrapper signature and `encrypted-recognized` classification against `baseline.json`. This asserts that the actual known wrapper is recognized **without** treating it as decrypted, or publishing bytes/content in CI output. It does not introduce or authorize any additional real documents. If provenance differs, CI fails instead of updating the baseline automatically. The result describes the view visible to the CI process, not necessarily raw encrypted disk bytes on the owner's machine.
+
 ## Red/green rule
 
 Bug fixes land with two pieces of evidence in the PR: the new test failing against the unfixed code (red), and passing after the fix (green). No red, no proof the test tests anything; no green, no fix.
