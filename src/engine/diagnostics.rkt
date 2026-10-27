@@ -5,7 +5,8 @@
 
 (provide doctor-report
          run-fltmc
-         classify-fltmc-result)
+         classify-fltmc-result
+         bounded-capture)
 
 (define capture-limit 65536)
 (define timeout-seconds 8)
