@@ -5,10 +5,10 @@
 (require json
          rackunit
          racket/path
+         racket/runtime-path
          "../src/engine/inventory.rkt")
 
-(define fixtures
-  (build-path (current-directory) "tests" "fixtures" "real-samples"))
+(define-runtime-path fixtures "fixtures/real-samples")
 (define meta
   (call-with-input-file (build-path fixtures "baseline.json") read-json))
 (define specimen (build-path fixtures (hash-ref meta 'file)))
