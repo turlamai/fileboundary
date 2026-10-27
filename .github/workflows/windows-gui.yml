@@ -1,0 +1,58 @@
+name: FileBoundary native Windows GUI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-native-host:
+    name: Rivet WinUI 3 host / Racket CS 9.3
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Racket CS 9.3
+        uses: Bogdanp/setup-racket@v1.15
+        with:
+          architecture: x64
+          distribution: full
+          variant: CS
+          version: "9.3"
+      - name: Install pinned Rivet v0.13.0
+        shell: pwsh
+        run: |
+          raco pkg install --auto --no-docs 'https://github.com/turinglambdaai/rivet.git#v0.13.0'
+          if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
+      - name: Check native Windows toolchain
+        shell: pwsh
+        run: |
+          raco rivet doctor --json
+          if ($LASTEXITCODE -ne 0) { throw "Rivet doctor failed" }
+      - name: Contract and Racket engine tests
+        shell: pwsh
+        run: |
+          raco rivet inspect --json
+          if ($LASTEXITCODE -ne 0) { throw "Project inspect failed" }
+          raco rivet schema check rivet-schema.json --json
+          if ($LASTEXITCODE -ne 0) { throw "Schema compatibility check failed" }
+          raco test tests/summary-test.rkt
+          if ($LASTEXITCODE -ne 0) { throw "Shared summary unit tests failed" }
+      - name: Compile FileBoundary native WinUI 3 host
+        shell: pwsh
+        run: |
+          raco rivet build
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary native host build failed" }
+      - name: Verify development package
+        shell: pwsh
+        run: |
+          raco rivet package
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package failed" }
+          raco rivet verify
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package verification failed" }
