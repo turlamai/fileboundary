@@ -21,6 +21,16 @@ raco test tests/inventory-test.rkt tests/cli-test.rkt
 
 Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a bounded read-only Filter Manager inventory; `verify` now compares an **operator-provided authorized export** to the original source as a read-only evidence report; it does not create decrypted content or certify recovery. See [implementation limits](docs/implementation-slice.md).
 
+### Authorized export verification (read-only preview)
+
+After an approved vendor/administrator export has **already** produced a separate candidate file, compare it against the encrypted original:
+
+```powershell
+racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D:\\ApprovedExports\\document.pdf"
+```
+
+This does **not decrypt** E-SafeNet ciphertext. Exit 1 means **unverified** and further independent checks are required; exit 4 rejects a still-encrypted wrapper or trusted-plaintext-hash mismatch. Read the [authorized recovery guide](docs/authorized-recovery.md) for vendor prerequisites and evidence requirements. Never delete originals based on this result.
+
 ## Background
 
 The target machine runs third-party transparent file encryption software that combines mechanisms typical of the genre:
