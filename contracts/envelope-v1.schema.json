@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/turinglambdaai/fileboundary/blob/main/contracts/envelope-v1.schema.json",
+  "title": "FileBoundary headless CLI envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "command", "invocationId", "status", "data", "warnings", "errors", "durationMs"],
+  "properties": {
+    "schemaVersion": { "type": "string", "const": "1.0" },
+    "command": { "type": "string", "minLength": 1 },
+    "invocationId": { "type": "string", "minLength": 1 },
+    "status": { "enum": ["ok", "partial", "error"] },
+    "data": { "type": "object" },
+    "warnings": { "$ref": "#/$defs/items" },
+    "errors": { "$ref": "#/$defs/items" },
+    "durationMs": { "type": "integer", "minimum": 0 }
+  },
+  "$defs": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["code", "message"],
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string" }
+        }
+      }
+    }
+  }
+}
