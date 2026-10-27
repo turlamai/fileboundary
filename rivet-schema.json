@@ -29,6 +29,29 @@
         "kind": "scalar",
         "name": "String"
       }
+    },
+    {
+      "name": "verify-export-summary",
+      "arguments": [
+        {
+          "name": "original",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "exported",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
     }
   ],
   "states": [],
