@@ -1,0 +1,44 @@
+name: Windows Racket core
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/racket-inventory-cli"
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  racket-core:
+    name: Racket CS 9.3 / Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Racket CS
+        uses: Bogdanp/setup-racket@v1.15
+        with:
+          architecture: x64
+          distribution: full
+          variant: CS
+          version: "9.3"
+      - name: Compile headless engine and CLI
+        run: raco make src/engine/inventory.rkt src/cli.rkt
+      - name: Run real unit and contract tests
+        run: raco test tests/inventory-test.rkt tests/cli-test.rkt
+      - name: CLI process smoke (real Windows process)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $json = racket src/cli.rkt version | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "version failed" }
+          if ($json.schemaVersion -ne '1.0' -or $json.status -ne 'ok') { throw "unexpected envelope" }
+          $bad = racket src/cli.rkt scan | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 2 -or $bad.status -ne 'error') { throw "usage errors not reflected in exit code" }
+          Write-Output "version and usage JSON contract smoke passed"
