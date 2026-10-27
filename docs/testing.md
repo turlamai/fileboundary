@@ -29,6 +29,10 @@ Bug fixes land with two pieces of evidence in the PR: the new test failing again
 
 For leak- and serialization-class bugs, the defense scans **produced artifacts** — manifests, reports, audit logs, envelope output — rather than matching source code. Tests assert that artifacts contain hashes, paths, and verdicts, and never file content or key material.
 
+## First executable Windows core suite
+
+The headless Racket developer preview has a Windows-only workflow at `.github/workflows/windows-core.yml` which invokes Racket compilation, `raco test` on two synthetic suites and a real CLI subprocess smoke. The workflow exercises only implemented `version` and `scan`, verifies the JSON envelope and failure exit codes, and does **not** claim GUI/driver/recovery coverage. A green run is required before merging the first code PR; an initially green codebase does not close #6 because many other layers remain.
+
 ## CI gates
 
 From #6 onward: a `windows-latest` workflow runs build + unit + integration + contract tests on every PR. Red CI blocks merge (required status check). The workflow may not use `continue-on-error`, skipped jobs, or weakened assertions to appear green — a workflow that cannot fail is not a gate.
