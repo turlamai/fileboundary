@@ -19,7 +19,7 @@ racket src/cli.rkt scan "C:\\test-data" --max-files 500
 raco test tests/inventory-test.rkt tests/cli-test.rkt
 ```
 
-每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 现已支持只读 Filter Manager 清单，`verify` 仍明确返回 `notImplemented`。详见 [实现限制](docs/implementation-slice.md)。
+每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 现已支持只读 Filter Manager 清单，`verify` 现支持对**操作人员已获授权导出的文件**进行只读比对，但不会生成明文，也不会据此宣称完成解密。详见 [实现限制](docs/implementation-slice.md)。
 
 ## 背景
 
