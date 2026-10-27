@@ -15,7 +15,7 @@
 5. **PR.** Use the PR template; state what/why/how-verified; check the [security.md](security.md) boundaries if touching diagnostics, recovery, permissions, or output writing.
 6. **Merge.** CI green required; squash merge to keep history linear; delete the branch after merge. `main` always green: whoever breaks it fixes or reverts immediately.
 
-Branch protection enforces the PR path for everyone, including administrators.
+The PR path applies to everyone, including administrators. Server-side enforcement (branch protection / rulesets) requires GitHub Pro on private repositories — until the plan allows it, the rule is enforced by review discipline, and it gets configured the moment the plan does ([#6](https://github.com/turinglambdaai/fileboundary/issues/6)).
 
 ## Coding standards
 

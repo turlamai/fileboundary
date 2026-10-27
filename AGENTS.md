@@ -60,8 +60,10 @@ Windows 10/11 x64，本地优先，无遥测。
 - `main` 是唯一长期分支，必须永远绿；谁推红 CI 谁当场修或 revert。
 - 功能开发用短命分支：`feat/<topic>`、`fix/<topic>`、`docs/<topic>`；
   合并后删除分支。
-- 所有变更经 PR 进入 `main`（分支保护强制，含管理员）；禁止 force push、
-  禁止删除 `main`、禁止破坏线性历史的 merge commit。
+- 所有变更经 PR 进入 `main`；禁止 force push、禁止删除 `main`、禁止破坏
+  线性历史的 merge commit。注：GitHub Free 的私有仓库无法启用服务端分支
+  保护（需 Pro 或公开仓库）；在计划允许前 PR 纪律由审查执行，允许后立即
+  配置强制（见 Issue #6）。
 - 多会话并行同一仓库时用 `git worktree` 隔离。
 
 ## PR 审查要求
