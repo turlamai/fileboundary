@@ -31,6 +31,10 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 
 此命令**不会直接解密 E-SafeNet 密文**。退出码 1 为**尚未验证**，需要独立检查；退出码 4 表示检测到加密封装仍存在或可信明文哈希不匹配。详细说明见[存量文件授权恢复指南](docs/authorized-recovery.md)。不要凭此删除原始加密文件。
 
+### Windows GUI 测试包
+
+[Windows GUI CI](.github/workflows/windows-gui.yml) 会生成便携开发包 **FileBoundary-Windows-x64-dev**。界面支持只读扫描、过滤驱动诊断和新增的 **Check Export / 验证导出**，用于比较原密文与**已经正式授权导出的候选文件**。输出 `FAILED` 或 `UNVERIFIED` 都**不表示已能独立解密密文**。在受保护的电脑上安装之前，先阅读 [Windows 实机验收指南](docs/windows-qa.zh-CN.md)，不要删除原始加密文件。
+
 ## 背景
 
 目标机器运行着第三方透明文件加密软件，其机制组合是该品类的典型形态：
