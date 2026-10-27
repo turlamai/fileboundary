@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "1.0",
+  "kind": "real-sample-baseline",
+  "file": "esafenet-locked-sample.pdf",
+  "originalFilename": "说给对方听.pdf",
+  "addedAt": "2026-10-27",
+  "exception": "ADR-0003",
+  "sha256": "3d91c88f9d089d59e6e993849327b6ef97609fb200a7c7399e6f7b3b542338e1",
+  "sizeBytes": 26516346,
+  "signature": {
+    "magicHex": "621423659b006501",
+    "asciiMarkers": ["E-SafeNet", "LOCK"],
+    "prefix64Hex": "621423659b00650100000001452d536166654e65740000004c4f434b000000000000000000000000bd41a84053766b3b8a061e67576e926d0000000000000000"
+  },
+  "plaintextMarkers": {
+    "pdfHeader": "absent",
+    "method": "byte scan of entire file for '%PDF-'"
+  },
+  "entropy": {
+    "method": "shannon bits/byte over 64KiB samples",
+    "samples": [
+      { "offset": 1048576, "bitsPerByte": 7.997 },
+      { "offset": 8388608, "bitsPerByte": 7.997 },
+      { "offset": 20971520, "bitsPerByte": 7.997 }
+    ]
+  },
+  "expectedClassification": "encrypted-recognized",
+  "mustNotClassifyAs": ["plaintext"],
+  "copyIntegrity": {
+    "verified": true,
+    "note": "committed copy re-hashed identical to source immediately after copy"
+  },
+  "contentCommitted": true
+}
