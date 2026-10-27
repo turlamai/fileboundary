@@ -43,37 +43,34 @@
 ;; On Windows CI, actual synthetic child processes verify concurrent capture,
 ;; bounded memory, explicit launch failures and enforced termination timeouts.
 (when (eq? (system-type 'os) 'windows)
-  (define racket-exe (find-executable-path "racket.exe"))
-  (check-true (path? racket-exe))
-  (define success
-    (run-bounded-child
-     racket-exe
-     (list "-e" "(begin (display \"synthetic-stdout\") (eprintf \"synthetic-stderr\"))")
-     8))
-  (check-equal? (hash-ref success 'status) "ok")
-  (check-equal? (hash-ref success 'stdout) "synthetic-stdout")
-  (check-equal? (hash-ref success 'stderr) "synthetic-stderr")
-  (check-true (exact-integer? (hash-ref success 'capturedAtUnixMs)))
-
-  (define oversized
-    (run-bounded-child
-     racket-exe
-     (list "-e" "(begin (display (make-string 70000 #\\x)) (eprintf \"err\"))")
-     8))
-  (check-equal? (hash-ref oversized 'status) "ok")
-  (check-true (hash-ref oversized 'truncated))
-  (check-equal? (string-length (hash-ref oversized 'stdout)) 65536)
-  (check-equal? (hash-ref oversized 'stderr) "err")
-
-  (define hung
-    (run-bounded-child racket-exe (list "-e" "(sleep 10)") 0.3))
-  (check-equal? (hash-ref hung 'status) "timedOut")
-  (check-equal? (hash-ref hung 'exitCode) 'null)
-  (check-true (< (hash-ref hung 'durationMs) 5000))
-
-  (define unavailable
-    (run-bounded-child
-     (build-path (find-system-path 'temp-dir)
-                 "fileboundary-intentionally-absent-command-987654321.exe")
-     '() 1))
-  (check-equal? (hash-ref unavailable 'status) "launchFailed"))
+  (let* ([racket-exe (find-executable-path "racket.exe")]
+         [success
+          (run-bounded-child
+           racket-exe
+           (list "-e" "(begin (display \"synthetic-stdout\") (eprintf \"synthetic-stderr\"))")
+           8)]
+         [oversized
+          (run-bounded-child
+           racket-exe
+           (list "-e" "(begin (display (make-string 70000 #\\x)) (eprintf \"err\"))")
+           8)]
+         [hung
+          (run-bounded-child racket-exe (list "-e" "(sleep 10)") 0.3)]
+         [unavailable
+          (run-bounded-child
+           (build-path (find-system-path 'temp-dir)
+                       "fileboundary-intentionally-absent-command-987654321.exe")
+           '() 1)])
+    (check-true (path? racket-exe))
+    (check-equal? (hash-ref success 'status) "ok")
+    (check-equal? (hash-ref success 'stdout) "synthetic-stdout")
+    (check-equal? (hash-ref success 'stderr) "synthetic-stderr")
+    (check-true (exact-integer? (hash-ref success 'capturedAtUnixMs)))
+    (check-equal? (hash-ref oversized 'status) "ok")
+    (check-true (hash-ref oversized 'truncated))
+    (check-equal? (string-length (hash-ref oversized 'stdout)) 65536)
+    (check-equal? (hash-ref oversized 'stderr) "err")
+    (check-equal? (hash-ref hung 'status) "timedOut")
+    (check-equal? (hash-ref hung 'exitCode) 'null)
+    (check-true (< (hash-ref hung 'durationMs) 5000))
+    (check-equal? (hash-ref unavailable 'status) "launchFailed")))
