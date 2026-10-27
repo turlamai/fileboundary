@@ -53,6 +53,10 @@ The Windows core workflow installs a pinned **test-only** `jsonschema==4.23.0` P
 
 This increases actual contract coverage but does **not** finish release packaging, persistent artifacts, independent decrypted-file verification or CI branch protection (plan limitation in Issue #6).
 
+## Bounded Windows diagnostic subprocess tests
+
+`tests/diagnostics-test.rkt` drives synthetic child processes on Windows (success, mixed stdout/stderr, oversized output, intentionally stalled child, missing executable) through the **same bounded executor** used for fixed read-only `fltmc.exe filters/instances`. It asserts machine-readable status, Unix-millisecond capture timestamps, bounded duration and output truncation. No security service, driver, or real protected process is modified.
+
 ## CI gates
 
 From #6 onward: a `windows-latest` workflow runs build + unit + integration + contract tests on every PR. Red CI blocks merge (required status check). The workflow may not use `continue-on-error`, skipped jobs, or weakened assertions to appear green — a workflow that cannot fail is not a gate.

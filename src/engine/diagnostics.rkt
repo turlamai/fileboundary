@@ -1,6 +1,6 @@
 #lang racket/base
 
-;; Narrow, read-only Filter Manager diagnostics. Never changes loaded filters.
+;; Fixed read-only Windows Filter Manager diagnostics. Never changes drivers.
 (require racket/port)
 
 (provide doctor-report
@@ -11,8 +11,11 @@
 (define capture-limit 65536)
 (define timeout-seconds 8)
 
+(define (now-ms)
+  (inexact->exact (floor (current-inexact-milliseconds))))
+
 (define (bounded-capture input)
-  ;; Continue draining even beyond the storage cap to prevent a full-pipe deadlock.
+  ;; Continue draining after the storage cap so full child pipes cannot block.
   (define collected (open-output-bytes))
   (define kept 0)
   (define truncated? #f)
@@ -37,58 +40,76 @@
      "requiresElevation"]
     [else "failed"]))
 
+(define (blank-result status started)
+  (hash 'status status
+        'exitCode 'null
+        'stdout ""
+        'stderr ""
+        'truncated #f
+        'capturedAtUnixMs started
+        'durationMs (max 0 (- (now-ms) started))))
+
+;; Internal executor: production callers supply ONLY fltmc.exe and fixed args.
+;; Synthetic commands are used exclusively by the test-support submodule.
+(define (run-bounded-child executable arguments [seconds timeout-seconds])
+  (define started (now-ms))
+  (with-handlers ([exn:fail? (lambda (_) (blank-result "launchFailed" started))])
+    ;; Some Windows subprocess configurations return a failed child status
+    ;; instead of throwing for a missing executable. Distinguish launch
+    ;; failure from a genuine diagnostic command failure before starting.
+    (unless (file-exists? executable)
+      (error 'run-bounded-child "diagnostic executable unavailable"))
+    (define-values (process stdout stdin stderr)
+      (apply subprocess #f #f #f executable arguments))
+    (close-output-port stdin)
+    (define out-value (box (hash 'text "" 'truncated #t)))
+    (define err-value (box (hash 'text "" 'truncated #t)))
+    ;; Drain stdout/stderr concurrently before waiting; neither pipe can starve.
+    (define out-worker
+      (thread (lambda () (set-box! out-value (bounded-capture stdout)))))
+    (define err-worker
+      (thread (lambda () (set-box! err-value (bounded-capture stderr)))))
+    (define finished? (sync/timeout seconds process))
+    (unless finished?
+      ;; Terminate only the short-lived diagnostic child, never a filter driver.
+      (subprocess-kill process #t))
+    (subprocess-wait process)
+    (unless (sync/timeout 2 out-worker)
+      (close-input-port stdout)
+      (kill-thread out-worker))
+    (unless (sync/timeout 2 err-worker)
+      (close-input-port stderr)
+      (kill-thread err-worker))
+    (unless (port-closed? stdout) (close-input-port stdout))
+    (unless (port-closed? stderr) (close-input-port stderr))
+    (define out (unbox out-value))
+    (define err (unbox err-value))
+    (define code (if finished? (subprocess-status process) 'null))
+    (hash 'status (classify-fltmc-result
+                   code
+                   (string-append (hash-ref out 'text)
+                                  (hash-ref err 'text))
+                   (not finished?))
+          'exitCode code
+          'stdout (hash-ref out 'text)
+          'stderr (hash-ref err 'text)
+          'truncated (or (hash-ref out 'truncated)
+                         (hash-ref err 'truncated))
+          'capturedAtUnixMs started
+          'durationMs (max 0 (- (now-ms) started)))))
+
 (define (run-fltmc subcommand)
   (unless (member subcommand '("filters" "instances"))
     (raise-argument-error 'run-fltmc "\"filters\" or \"instances\"" subcommand))
+  (define started (now-ms))
   (cond
     [(not (eq? (system-type 'os) 'windows))
-     (hash 'status "unsupportedPlatform" 'exitCode 'null
-           'stdout "" 'stderr "" 'truncated #f)]
+     (blank-result "unsupportedPlatform" started)]
     [else
      (define executable (find-executable-path "fltmc.exe"))
      (if (not executable)
-         (hash 'status "toolUnavailable" 'exitCode 'null
-               'stdout "" 'stderr "" 'truncated #f)
-         (with-handlers ([exn:fail?
-                          (lambda (_)
-                            (hash 'status "launchFailed" 'exitCode 'null
-                                  'stdout "" 'stderr "" 'truncated #f))])
-           (define-values (process stdout stdin stderr)
-             (subprocess #f #f #f executable subcommand))
-           (close-output-port stdin)
-           (define out-value (box (hash 'text "" 'truncated #t)))
-           (define err-value (box (hash 'text "" 'truncated #t)))
-           ;; Both streams are drained concurrently, not sequentially.
-           (define out-worker
-             (thread (lambda () (set-box! out-value (bounded-capture stdout)))))
-           (define err-worker
-             (thread (lambda () (set-box! err-value (bounded-capture stderr)))))
-           (define finished? (sync/timeout timeout-seconds process))
-           (unless finished?
-             ;; This terminates only our fltmc.exe child, never a filter driver.
-             (subprocess-kill process #t))
-           (subprocess-wait process)
-           (unless (sync/timeout 2 out-worker)
-             (close-input-port stdout)
-             (kill-thread out-worker))
-           (unless (sync/timeout 2 err-worker)
-             (close-input-port stderr)
-             (kill-thread err-worker))
-           (unless (port-closed? stdout) (close-input-port stdout))
-           (unless (port-closed? stderr) (close-input-port stderr))
-           (define out (unbox out-value))
-           (define err (unbox err-value))
-           (define code (if finished? (subprocess-status process) 'null))
-           (hash 'status (classify-fltmc-result
-                          code
-                          (string-append (hash-ref out 'text)
-                                         (hash-ref err 'text))
-                          (not finished?))
-                 'exitCode code
-                 'stdout (hash-ref out 'text)
-                 'stderr (hash-ref err 'text)
-                 'truncated (or (hash-ref out 'truncated)
-                                (hash-ref err 'truncated)))))]))
+         (blank-result "toolUnavailable" started)
+         (run-bounded-child executable (list subcommand)))]))
 
 (define (doctor-report)
   (define filters (run-fltmc "filters"))
@@ -98,3 +119,7 @@
                       (not (equal? (hash-ref instances 'status) "ok")))
         'evidence "measured"
         'scope "read-only-filter-enumeration"))
+
+;; A separate test-only API, never referenced by the GUI or CLI.
+(module+ test-support
+  (provide run-bounded-child))
