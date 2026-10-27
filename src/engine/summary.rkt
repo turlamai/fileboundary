@@ -62,7 +62,7 @@
     (error 'verify-export-summary "Both local file paths are required"))
   (with-handlers ([exn:fail?
                    (lambda (_)
-                     "Unable to inspect one or both files. Check their local paths and permissions. No files were modified.")])
+                     "Authorized export comparison: ERROR. Unable to inspect one or both files. Check local paths and permissions. No files were modified.")])
     (define result (assess-authorized-export original-path exported-path))
     (define bad? (equal? (hash-ref result 'verdict) "failed"))
     (define reasons (hash-ref result 'reasonCodes))
