@@ -6,7 +6,7 @@
 
 ## Status
 
-Repository scaffold. This repository currently ships the engineering charter ([`AGENTS.md`](AGENTS.md)), the architecture and workflow documentation ([`docs/`](docs/architecture.md)), and a fully specified issue backlog. **It contains no product code yet.** A FileBoundary v0.1 prototype already exists outside this repository and will be reviewed, imported and refactored against this base — see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1). Nothing in this README describes shipped behavior until that import lands.
+Repository scaffold. This repository currently ships the engineering charter ([`AGENTS.md`](AGENTS.md)), the architecture and workflow documentation ([`docs/`](docs/architecture.md)), and a fully specified issue backlog. **It contains no product code yet.** A FileBoundary v0.1 prototype already exists outside this repository and will be reviewed, imported and refactored against this base — see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1). Nothing in this README describes shipped behavior until that import lands. A [source-only v0.1 review](docs/prototype-review.md) records confirmed code-level facts, gaps and the proposed stack decision; no Windows build or import is claimed.
 
 ## Background
 
