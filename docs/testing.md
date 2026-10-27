@@ -21,11 +21,15 @@ Some diagnostics can only produce full results elevated on the real machine. CI 
 - **Encryption-like corpus** — high-entropy blobs, known-wrapper format samples, extension/structure mismatches — covering every classification label in [architecture.md](architecture.md#inventory-module--planned-4).
 - **Round-trip baseline** — where the transparent-encryption mechanism is available on the operator's machine: known plaintext written through it, hash recorded, kept **outside** the repository and referenced by hash in tests.
 
-## Owner-approved real encrypted specimen regression
+## Controlled encrypted/plaintext fixture regression
 
-Under the single-file exception in [ADR-0003](decisions/ADR-0003-real-encrypted-sample-exception.md), `tests/real-wrapper-baseline-test.rkt` reads the existing `tests/fixtures/real-samples/esafenet-locked-sample.pdf` in **read-only** mode and checks its size, SHA-256, wrapper signature and `encrypted-recognized` classification against `baseline.json`. This asserts that the actual known wrapper is recognized **without** treating it as decrypted, or publishing bytes/content in CI output. It does not introduce or authorize any additional real documents. If provenance differs, CI fails instead of updating the baseline automatically. The result describes the view visible to the CI process, not necessarily raw encrypted disk bytes on the owner's machine.
+Under [ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md), the only current binary fixtures are an encrypted/plaintext DOCX twin pair pinned by `tests/fixtures/real-samples/baseline.json`.
 
-Separately, [ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md) authorizes the same-content encrypted/plaintext twin pair (`baseline-twins.json`) for classifier and recovery-round-trip tests: the wrapped twin must classify `encrypted-recognized` from the wrapper signature (never entropy, never extension), and recovery of it must yield content containing the fingerprint `123 abc`. `baseline.json` is left untouched because the regression test above consumes it; the two baselines consolidate when ADR-0004's deferred removal of the ADR-0003 specimen is executed.
+- `tests/real-wrapper-baseline-test.rkt` checks the wrapped twin's SHA-256, size, wrapper signature and `encrypted-recognized` classification; it must never report `plaintext` from magic bytes alone.
+- `tests/recovery-twin-baseline-test.rkt` checks the plaintext twin against its independent trusted hash and confirms the verdict remains `unverified` pending independent format and reader validation. No test decrypts the encrypted twin.
+- The earlier personal PDF was removed from current tracked files under [ADR-0005](decisions/ADR-0005-personal-pdf-removed-from-head.md). **This does not purge historical Git objects.** Historical privacy cleanup remains [Issue #23](https://github.com/turinglambdaai/fileboundary/issues/23).
+
+Results measure only bytes visible to the CI process, not necessarily raw-on-disk bytes on a protected workstation. No protected document contents are emitted to logs.
 
 ## Red/green rule
 
