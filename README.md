@@ -6,7 +6,20 @@
 
 ## Status
 
-Repository scaffold. This repository currently ships the engineering charter ([`AGENTS.md`](AGENTS.md)), the architecture and workflow documentation ([`docs/`](docs/architecture.md)), and a fully specified issue backlog. **It contains no product code yet.** A FileBoundary v0.1 prototype already exists outside this repository and will be reviewed, imported and refactored against this base — see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1). Nothing in this README describes shipped behavior until that import lands.
+**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). The native GUI, broad diagnostics, manifest persistence and authorized recovery verification are **not yet implemented**. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
+
+### Headless developer preview
+
+Requires Racket CS 9.3 on Windows. Invoke from the repository root:
+
+```powershell
+racket src/cli.rkt version
+racket src/cli.rkt scan "C:\\test-data\\fixture.pdf"
+racket src/cli.rkt scan "C:\\test-data" --max-files 500
+raco test tests/inventory-test.rkt tests/cli-test.rkt
+```
+
+Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data; `doctor` and `verify` explicitly return `notImplemented`. See [implementation limits](docs/implementation-slice.md).
 
 ## Background
 

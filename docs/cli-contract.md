@@ -1,6 +1,6 @@
 # CLI Contract
 
-**Status: normative specification, not yet implemented.** This document is what [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7) implements and what contract tests enforce. Until that issue lands, nothing here describes shipped behavior.
+**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` now emit the common envelope with documented exit codes and bounded results, while `doctor` and `verify` return coded `notImplemented` errors. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
 
 ## Principles
 
@@ -48,7 +48,9 @@ Field rules:
 | `4` | Verification failed (recovery pipeline verdict) |
 | `10`–`19` | Reserved for module-specific codes; documented here before first use |
 
-## Commands (planned)
+## Commands (planned unless explicitly stated)
+
+In the developer preview, `version` and `scan <path> [--max-files N]` are implemented. Scan returns file records directly in `data.files`; it does **not** yet write a manifest or verify plaintext. The `doctor` and `verify` names are recognized but return `notImplemented` / exit 3. All remaining behavior in the table below is planned.
 
 | Command | Purpose | Issue |
 |---|---|---|
