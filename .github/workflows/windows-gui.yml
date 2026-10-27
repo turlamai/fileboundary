@@ -56,6 +56,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "FileBoundary package failed" }
           raco rivet verify
           if ($LASTEXITCODE -ne 0) { throw "FileBoundary package verification failed" }
+      - name: Preserve Rivet host license notice in developer package
+        shell: pwsh
+        run: |
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination dist/fileboundary-windows-x64/THIRD_PARTY_NOTICES.md
+          if (!(Test-Path dist/fileboundary-windows-x64/THIRD_PARTY_NOTICES.md)) { throw "Missing attribution notice" }
       - name: Upload verified Windows x64 development build
         uses: actions/upload-artifact@v4
         with:
