@@ -135,9 +135,16 @@ void MainWindow::Doctor_Click(
   RunDoctorAsync();
 }
 
+void MainWindow::Verify_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  RunVerifyAsync();
+}
+
 void MainWindow::SetBusyUi(bool busy) {
   ScanButton().IsEnabled(!busy && backend_ && backend_->running());
   DoctorButton().IsEnabled(!busy && backend_ && backend_->running());
+  VerifyButton().IsEnabled(!busy && backend_ && backend_->running());
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
     StatusBar().Message(L"Read-only operation running...");
@@ -209,11 +216,55 @@ void MainWindow::RunDoctorAsync() {
   }
 }
 
+void MainWindow::RunVerifyAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  auto const original = winrt::to_string(PathBox().Text());
+  auto const exported = winrt::to_string(ExportPathBox().Text());
+  if (original.empty() || exported.empty()) {
+    SetErrorUi("Select both the encrypted original and the approved export");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.verify_export_summary_async(original, exported,
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) window->ShowResult(message);
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
+}
+
 void MainWindow::ShowResult(std::string const& message) {
   OutputText().Text(winrt::to_hstring(message));
   SetBusyUi(false);
-  StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-  StatusBar().Message(L"Read-only operation finished");
+  if (message.rfind("Authorized export comparison: FAILED", 0) == 0) {
+    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
+    StatusBar().Message(L"Export failed verification. No files were changed.");
+  } else if (message.rfind("Authorized export comparison: UNVERIFIED", 0) == 0) {
+    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
+    StatusBar().Message(L"Export is unverified, not confirmed as decrypted.");
+  } else {
+    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
+    StatusBar().Message(L"Read-only operation finished");
+  }
 }
 
 void MainWindow::SetReadyUi() {
