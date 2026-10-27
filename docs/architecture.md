@@ -95,7 +95,11 @@ All outputs are written to operator-designated locations outside the repository.
 
 ## Technology posture
 
-The v0.1 prototype's stack is under review ([#1](https://github.com/turinglambdaai/fileboundary/issues/1)). The family default is a domain engine with a native Windows host and all business logic outside the UI shell; the final decision — including any platform-mandated host — is recorded in ADR-0002 ([#2](https://github.com/turinglambdaai/fileboundary/issues/2)). Until that decision is accepted, no production code is written on speculation.
+**Owner preference: Racket-first.** A headless Racket engine and JSON CLI are the initial candidates; [Rivet](https://github.com/turinglambdaai/rivet) with a first-party Windows WinUI 3 host is the preferred GUI spike, while [Glaze](https://github.com/turinglambdaai/glaze) with a Windows WebView2 host is an explicitly supported fallback to evaluate. Product functionality must not depend on UI framework availability.
+
+Use Racket FFI or fixed bounded read-only diagnostics for Windows integration where reliable; isolate necessary Win32/COM functionality into narrow native user-mode modules when the real API/ABI warrants it. Do not introduce a kernel driver merely to read the filter stack.
+
+The original C#/WinForms v0.1 source is a reference prototype, **not** the selected implementation stack. The actual stack, native interoperability and deployment trade-offs remain **proposed** in [ADR-0002](decisions/adr-0002-prototype-stack.md) until Windows spikes, CLI/engine tests and package verification exist. Reusable Windows diagnostic/format libraries may be considered for Racket Package Catalog **only after** tests, API review and separate owner approval. No public publication is authorized by this proposal.
 
 ## Failure posture
 
