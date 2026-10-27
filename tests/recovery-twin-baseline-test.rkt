@@ -11,7 +11,7 @@
 
 (define-runtime-path fixture-root "fixtures/real-samples")
 (define baseline
-  (call-with-input-file (build-path fixture-root "baseline-twins.json")
+  (call-with-input-file (build-path fixture-root "baseline.json")
     read-json))
 (check-equal? (hash-ref baseline 'exception) "ADR-0004")
 (define specimens (hash-ref baseline 'specimens))
