@@ -6,7 +6,20 @@
 
 ## 状态
 
-仓库脚手架。当前仓库包含工程宪章（[`AGENTS.md`](AGENTS.md)）、架构与流程文档（[`docs/`](docs/architecture.md)）以及完整拆解的 issue 待办。**尚无产品代码。** FileBoundary v0.1 原型已存在于本仓库之外，将在此基座上完成审查、导入与重构——见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)。在该导入完成之前，本 README 中的任何内容都不代表已实现的行为。
+**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。原生 GUI、完整系统诊断、持久化清单和授权恢复验证**尚未实现**。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
+
+### 无界面开发预览
+
+Windows 需安装 Racket CS 9.3，在仓库根目录执行：
+
+```powershell
+racket src/cli.rkt version
+racket src/cli.rkt scan "C:\\test-data\\fixture.pdf"
+racket src/cli.rkt scan "C:\\test-data" --max-files 500
+raco test tests/inventory-test.rkt tests/cli-test.rkt
+```
+
+每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 和 `verify` 会明确返回 `notImplemented`。详见 [实现限制](docs/implementation-slice.md)。
 
 ## 背景
 
