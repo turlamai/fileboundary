@@ -32,14 +32,14 @@
                  '() '())
          (bad-usage))]
     [(equal? command "scan")
-     (define max-files
+     (let ([max-files
        (cond
          [(= (length rest) 1) 1000]
          [(and (= (length rest) 3)
                (equal? (cadr rest) "--max-files"))
           (string->number (caddr rest))]
-         [else #f]))
-     (if (and max-files
+         [else #f])])
+       (if (and max-files
               (exact-integer? max-files)
               (<= 1 max-files 100000))
          (let-values ([(files skipped truncated?)
@@ -62,7 +62,7 @@
                          'readView "current-process"
                          'recoveryVerdict "unverified")
                    warnings '()))
-         (bad-usage))]
+         (bad-usage)))]
     [(or (equal? command "doctor") (equal? command "verify"))
      (values 3 "error" (hash) '()
              (list (coded "notImplemented"
