@@ -6,7 +6,7 @@
 
 ## 状态
 
-仓库脚手架。当前仓库包含工程宪章（[`AGENTS.md`](AGENTS.md)）、架构与流程文档（[`docs/`](docs/architecture.md)）以及完整拆解的 issue 待办。**尚无产品代码。** FileBoundary v0.1 原型已存在于本仓库之外，将在此基座上完成审查、导入与重构——见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)。在该导入完成之前，本 README 中的任何内容都不代表已实现的行为。
+仓库脚手架。当前仓库包含工程宪章（[`AGENTS.md`](AGENTS.md)）、架构与流程文档（[`docs/`](docs/architecture.md)）以及完整拆解的 issue 待办。**尚无产品代码。** FileBoundary v0.1 原型已存在于本仓库之外，将在此基座上完成审查、导入与重构——见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)。在该导入完成之前，本 README 中的任何内容都不代表已实现的行为。已新增 [v0.1 原型源码审查记录](docs/prototype-review.md) 和候选技术栈决策，当前仅为静态检查，尚未导入代码或完成 Windows 实机编译。
 
 ## 背景
 
