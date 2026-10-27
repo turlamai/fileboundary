@@ -10,6 +10,10 @@
 
 ### 无界面开发预览
 
+Windows 核心 CI 新增基于实际 Racket 命令运行结果的 [JSON Schema 契约检查](contracts/command-data-v1.schema.json)，覆盖 `version`、`scan`、`doctor` 和 `verify` 的正常、降级及失败状态。此检查**不表示**已经实现自动解密、持久化清单或完整安装包。
+
+
+
 Windows 需安装 Racket CS 9.3，在仓库根目录执行：
 
 ```powershell

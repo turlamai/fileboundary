@@ -31,6 +31,13 @@ jobs:
         run: raco make src/engine/inventory.rkt src/engine/diagnostics.rkt src/engine/summary.rkt src/engine/recovery.rkt src/cli.rkt
       - name: Run real unit and contract tests
         run: raco test tests/inventory-test.rkt tests/diagnostics-test.rkt tests/cli-test.rkt tests/real-wrapper-baseline-test.rkt tests/summary-test.rkt tests/recovery-test.rkt tests/recovery-twin-baseline-test.rkt
+      - name: JSON Schema contract tests (real CLI process)
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "jsonschema==4.23.0"
+          if ($LASTEXITCODE -ne 0) { throw "jsonschema dependency failed" }
+          python tests/validate_contract.py
+          if ($LASTEXITCODE -ne 0) { throw "CLI schema contract failed" }
       - name: CLI process smoke (real Windows process)
         shell: pwsh
         run: |

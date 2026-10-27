@@ -1,0 +1,307 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/turinglambdaai/fileboundary/blob/main/contracts/command-data-v1.schema.json",
+  "title": "FileBoundary CLI command payload contracts v1",
+  "description": "Payload definitions for implemented commands only. Do not imply manifest or verified plaintext.",
+  "$defs": {
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileName",
+        "sizeBytes",
+        "sha256",
+        "signature",
+        "classification",
+        "evidence",
+        "readView"
+      ],
+      "properties": {
+        "fileName": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "signature": {
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "encrypted-recognized",
+            "unknown"
+          ]
+        },
+        "evidence": {
+          "enum": [
+            "measured",
+            "heuristic"
+          ]
+        },
+        "readView": {
+          "const": "current-process"
+        }
+      }
+    },
+    "version": {
+      "type": "object",
+      "required": [
+        "version",
+        "runtime",
+        "interface",
+        "schemaVersion"
+      ],
+      "properties": {
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime": {
+          "const": "Racket CS"
+        },
+        "interface": {
+          "const": "headless"
+        },
+        "schemaVersion": {
+          "const": "1.0"
+        }
+      }
+    },
+    "scan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files",
+        "count",
+        "skippedCount",
+        "truncated",
+        "readView",
+        "recoveryVerdict"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/file"
+          }
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skippedCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "readView": {
+          "const": "current-process"
+        },
+        "recoveryVerdict": {
+          "const": "unverified"
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "required": [
+        "status",
+        "stdout",
+        "stderr",
+        "truncated",
+        "exitCode"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "ok",
+            "requiresElevation",
+            "toolUnavailable",
+            "launchFailed",
+            "timedOut",
+            "failed",
+            "unsupportedPlatform"
+          ]
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
+        },
+        "exitCode": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "doctor": {
+      "type": "object",
+      "required": [
+        "checks",
+        "degraded",
+        "evidence",
+        "scope"
+      ],
+      "properties": {
+        "checks": {
+          "type": "object",
+          "required": [
+            "filters",
+            "instances"
+          ],
+          "properties": {
+            "filters": {
+              "$ref": "#/$defs/check"
+            },
+            "instances": {
+              "$ref": "#/$defs/check"
+            }
+          }
+        },
+        "degraded": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "const": "measured"
+        },
+        "scope": {
+          "const": "read-only-filter-enumeration"
+        }
+      }
+    },
+    "export-file": {
+      "type": "object",
+      "required": [
+        "fileName",
+        "sha256",
+        "sizeBytes",
+        "signature",
+        "classification"
+      ],
+      "properties": {
+        "fileName": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "signature": {
+          "type": "string"
+        },
+        "classification": {
+          "type": "string"
+        }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "required": [
+        "verdict",
+        "source",
+        "export",
+        "sameReadView",
+        "trustedPlaintextSha256Comparison",
+        "pdfStructureHints",
+        "fullFormatValidation",
+        "independentReader",
+        "evidence",
+        "authorizedExport",
+        "reasonCodes",
+        "readView",
+        "plaintextBytesExported"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": [
+            "failed",
+            "unverified"
+          ]
+        },
+        "source": {
+          "$ref": "#/$defs/export-file"
+        },
+        "export": {
+          "$ref": "#/$defs/export-file"
+        },
+        "sameReadView": {
+          "type": "boolean"
+        },
+        "trustedPlaintextSha256Comparison": {
+          "enum": [
+            "notProvided",
+            "matched",
+            "mismatched"
+          ]
+        },
+        "pdfStructureHints": {
+          "type": "object",
+          "required": [
+            "eofMarkerSeen",
+            "xrefMarkerSeen",
+            "evidence"
+          ],
+          "properties": {
+            "eofMarkerSeen": {
+              "type": "boolean"
+            },
+            "xrefMarkerSeen": {
+              "type": "boolean"
+            },
+            "evidence": {
+              "enum": [
+                "heuristic",
+                "notApplicable"
+              ]
+            }
+          }
+        },
+        "fullFormatValidation": {
+          "const": "notPerformed"
+        },
+        "independentReader": {
+          "const": "notTested"
+        },
+        "evidence": {
+          "const": "measured-and-heuristic"
+        },
+        "authorizedExport": {
+          "const": "operatorProvided"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "readView": {
+          "const": "current-process"
+        },
+        "plaintextBytesExported": {
+          "const": false
+        }
+      }
+    }
+  }
+}

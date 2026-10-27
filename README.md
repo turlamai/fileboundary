@@ -10,6 +10,10 @@
 
 ### Headless developer preview
 
+The Windows core CI now also checks `version`, `scan`, `doctor` and `verify` against [machine-readable JSON Schema contracts](contracts/command-data-v1.schema.json), using the actual Racket subprocess. These are **metadata/verification contracts**, not claims of standalone decryption, manifest storage or installer completeness.
+
+
+
 Requires Racket CS 9.3 on Windows. Invoke from the repository root:
 
 ```powershell
