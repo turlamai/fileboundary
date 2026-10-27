@@ -104,6 +104,10 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 
 `main` 是唯一长期分支。所有变更经 pull request 进入；CI 是合并门禁。贡献前（无论人类还是机器）先读 [`AGENTS.md`](AGENTS.md)。流程细节见 [docs/development.md](docs/development.md)。
 
+## Windows 过滤驱动诊断（开发预览）
+
+Windows 控制台执行 `racket src/cli.rkt doctor`。目前只会执行限时、限输出的只读命令 `fltmc.exe filters` 和 `fltmc.exe instances`，分别报告退出状态、是否截断、是否超时。权限不足或命令失败**不能**解释为系统没有过滤驱动；此时会返回 `partial`（退出码 1）。更全面的驱动、服务和进程模块检查仍在规划中。`verify` 尚未实现，也不声称已能恢复密文。
+
 ## 许可
 
 专有——仅限内部使用。尚未授予任何许可，也暂无 LICENSE 文件；不得在所有者控制范围之外分发代码或其产物。
