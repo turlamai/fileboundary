@@ -33,7 +33,7 @@ The FileBoundary WinUI window now has two path boxes: the first selects the encr
 
 ## Not yet supported
 
-No GUI progress/cancel UI, persistent manifest, independent PDF/7z structural verification, authorized export validation, or installer is delivered by this slice. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
+No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
 
 ## Architecture note
 
