@@ -4,6 +4,7 @@
 ;; No document contents are logged, copied, or embedded in test output.
 (require rackunit
          json
+         racket/list
          racket/runtime-path
          "../src/engine/inventory.rkt"
          "../src/engine/recovery.rkt")
