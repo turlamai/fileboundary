@@ -66,6 +66,10 @@ FileBoundary is a diagnostics and recovery tool for the machine owner. It is not
 
 Anything the GUI can do, the CLI can do — agent parity is an architectural invariant, not a feature.
 
+## Technology direction
+
+The current experimental core and JSON CLI use **Racket**. The intended Windows-native GUI first candidate is **Rivet / WinUI 3**, with **Glaze / WebView2** as an evidence-based alternative. Low-level Windows work may use Racket FFI or narrowly scoped C/C++ user-mode components. See the [proposed ADR-0002](docs/decisions/adr-0002-prototype-stack.md) and [C#/WinForms source audit](docs/prototype-review.md). No Windows GUI has been built or approved yet. Extracting general-purpose Racket packages is optional and requires separate public release approval.
+
 ## Platform requirements
 
 - Windows 10 / 11 x64.
