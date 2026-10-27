@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - "feat/racket-inventory-cli"
   pull_request:
     branches:
       - main
@@ -42,3 +41,5 @@ jobs:
           $bad = racket src/cli.rkt scan | ConvertFrom-Json
           if ($LASTEXITCODE -ne 2 -or $bad.status -ne 'error') { throw "usage errors not reflected in exit code" }
           Write-Output "version and usage JSON contract smoke passed"
+          # Earlier expected nonzero child exit is not the job exit status.
+          exit 0
