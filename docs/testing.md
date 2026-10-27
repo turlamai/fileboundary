@@ -47,6 +47,10 @@ The headless Racket developer preview has a Windows-only workflow at `.github/wo
 
 `tests/recovery-test.rkt` uses synthetic E-SafeNet-like wrapper bytes and an intentionally minimal PDF-like export. It tests positive hints, known-plaintext SHA-256 matching and mismatch, still-wrapped rejection, no source writes, and refusal to promote a merely plausible file to a recovered/verified verdict. `tests/cli-test.rkt` tests the JSON status/exit-code contract. These tests **do not simulate actual E-SafeNet decryption**, full PDF validation, or vendor authorization.
 
+## Bounded Windows diagnostic subprocess tests
+
+`tests/diagnostics-test.rkt` drives synthetic child processes on Windows (success, mixed stdout/stderr, oversized output, intentionally stalled child, missing executable) through the **same bounded executor** used for fixed read-only `fltmc.exe filters/instances`. It asserts machine-readable status, Unix-millisecond capture timestamps, bounded duration and output truncation. No security service, driver, or real protected process is modified.
+
 ## CI gates
 
 From #6 onward: a `windows-latest` workflow runs build + unit + integration + contract tests on every PR. Red CI blocks merge (required status check). The workflow may not use `continue-on-error`, skipped jobs, or weakened assertions to appear green — a workflow that cannot fail is not a gate.
