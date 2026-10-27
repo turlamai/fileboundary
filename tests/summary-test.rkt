@@ -56,3 +56,11 @@
        (check-true (string-contains? result "FAILED"))
        (check-true (string-contains? result "exportStillEncryptedWrapper")))))
  (lambda () (delete-directory/files verify-root)))
+
+;; Input failures are never presented as a successful read-only operation.
+(define missing-status
+  (verify-export-summary
+   "missing-original-never-created-fileboundary.pdf"
+   "missing-export-never-created-fileboundary.pdf"))
+(check-true (string-contains? missing-status "Authorized export comparison: ERROR"))
+(check-false (string-contains? missing-status "UNVERIFIED"))
