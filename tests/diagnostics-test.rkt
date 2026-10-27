@@ -19,7 +19,7 @@
 (define checks (hash-ref report 'checks))
 (for ([name (in-list '(filters instances))])
   (define check (hash-ref checks name))
-  (check-true
+  (check-not-false
    (member (hash-ref check 'status)
            '("ok" "requiresElevation" "toolUnavailable" "launchFailed"
              "timedOut" "failed" "unsupportedPlatform")))
