@@ -21,6 +21,16 @@ raco test tests/inventory-test.rkt tests/cli-test.rkt
 
 每次调用向标准输出写一个 JSON envelope；默认不输出文件内容或完整路径。文件签名不能证明明文或恢复成功；`doctor` 现已支持只读 Filter Manager 清单，`verify` 现支持对**操作人员已获授权导出的文件**进行只读比对，但不会生成明文，也不会据此宣称完成解密。详见 [实现限制](docs/implementation-slice.md)。
 
+### 授权导出验证（只读预览）
+
+必须先经原加密系统**批准的正规解密/导出流程**取得另一份候选文件，再执行：
+
+```powershell
+racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D:\\ApprovedExports\\document.pdf"
+```
+
+此命令**不会直接解密 E-SafeNet 密文**。退出码 1 为**尚未验证**，需要独立检查；退出码 4 表示检测到加密封装仍存在或可信明文哈希不匹配。详细说明见[存量文件授权恢复指南](docs/authorized-recovery.md)。不要凭此删除原始加密文件。
+
 ## 背景
 
 目标机器运行着第三方透明文件加密软件，其机制组合是该品类的典型形态：
