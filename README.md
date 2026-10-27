@@ -19,7 +19,7 @@ racket src/cli.rkt scan "C:\\test-data" --max-files 500
 raco test tests/inventory-test.rkt tests/cli-test.rkt
 ```
 
-Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a bounded read-only Filter Manager inventory; `verify` now compares an **operator-provided authorized export** to the original source as a read-only evidence report; it does not create decrypted content or certify recovery. See [implementation limits](docs/implementation-slice.md).
+Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a timestamped, bounded read-only Filter Manager inventory (fixed commands, 64 KiB/stream, 8 s timeout); `verify` now compares an **operator-provided authorized export** to the original source as a read-only evidence report; it does not create decrypted content or certify recovery. See [implementation limits](docs/implementation-slice.md).
 
 ### Authorized export verification (read-only preview)
 
