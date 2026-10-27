@@ -3,7 +3,7 @@
 ## Environment
 
 - Windows 10 / 11 x64 for development and testing; administrator rights needed to exercise full diagnostics ([#3](https://github.com/turinglambdaai/fileboundary/issues/3)).
-- Toolchain: decided by ADR-0002 after the v0.1 prototype review ([#1](https://github.com/turinglambdaai/fileboundary/issues/1), [#2](https://github.com/turinglambdaai/fileboundary/issues/2)). Until that decision is accepted, this document defines the **workflow**, not build commands — build/test command templates are added to this page in the same PR that accepts ADR-0002.
+- Toolchain: **Racket-first preferred**, with Rivet/WinUI 3 as the initial native Windows GUI candidate and Glaze/WebView2 as a fallback, as documented by [proposed ADR-0002](decisions/adr-0002-prototype-stack.md). The C#/WinForms v0.1 prototype is not the default stack. Pin a concrete Racket CS version, package commit/release and native SDK only after actual Windows spikes (#1/#2). Until that decision is accepted, this document defines the **workflow**, not invented build commands; verified commands arrive with the accepted ADR.
 - Editor and line-ending hygiene: [.editorconfig](../.editorconfig) + [.gitattributes](../.gitattributes) (LF in the repository).
 
 ## Workflow

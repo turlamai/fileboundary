@@ -66,6 +66,10 @@ FileBoundary 是机器所有者的诊断与恢复工具，不是击穿防护的�
 
 GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选特性。
 
+## 技术方向
+
+当前开发预览的文件扫描引擎和 JSON CLI 使用 **Racket**；Windows GUI 首选验证 **Rivet / WinUI 3**，在实际测试表明有优势时可以改选 **Glaze / WebView2**。Windows 底层可使用 Racket FFI 或独立小型 C/C++ 用户态模块。详见[候选架构决策 ADR-0002](docs/decisions/adr-0002-prototype-stack.md)和[C#/WinForms 原型审查](docs/prototype-review.md)。原生 GUI 尚未实现或验收。通用 Racket 库公开发布需单独批准。
+
 ## 平台要求
 
 - Windows 10 / 11 x64。
