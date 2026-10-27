@@ -22,6 +22,7 @@ Significant decisions for FileBoundary are recorded here as short, numbered docu
 | ADR | Title | Status |
 |---|---|---|
 | [ADR-0001](ADR-0001-project-scope-and-boundaries.md) | Project scope and boundaries | Accepted |
-| [ADR-0003](ADR-0003-real-encrypted-sample-exception.md) | One-time exception — commit a real encrypted specimen as a fixture | Accepted (removal deferred — see ADR-0004) |
-| [ADR-0004](ADR-0004-real-sample-twin-pair-and-deferred-removal.md) | Real encrypted/plaintext twin pair; ADR-0003 specimen removal deferred | Accepted |
+| [ADR-0003](ADR-0003-real-encrypted-sample-exception.md) | Historical one-time personal specimen exception | Archived: retired from HEAD by ADR-0005; history purge pending |
+| [ADR-0004](ADR-0004-real-sample-twin-pair-and-deferred-removal.md) | Controlled encrypted/plaintext twin pair | Accepted |
+| [ADR-0005](ADR-0005-personal-pdf-removed-from-head.md) | Remove prior personal specimen from active tree | Accepted; history purge pending (#23) |
 | ADR-0002 | Technology stack (pending prototype review) | Proposed placeholder — see [#2](https://github.com/turinglambdaai/fileboundary/issues/2) |
