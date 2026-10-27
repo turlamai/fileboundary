@@ -1,6 +1,6 @@
 # CLI Contract
 
-**Status: normative specification, partially implemented in an experimental Racket CLI.** `version` and read-only `scan` emit the common envelope; `doctor` now returns read-only Windows filter enumeration with explicit per-check status, and `verify` performs read-only comparison of an already-authorized export. This is not a decryption engine. Full schema validation and artifact persistence remain for [Issue #7](https://github.com/turinglambdaai/fileboundary/issues/7). No Windows runtime success is claimed until CI has run. See [first implementation slice](implementation-slice.md).
+**Status: four command envelopes implemented; artifact persistence is not implemented.** The Windows core workflow executes a real Racket CLI process for `version`, `scan`, `doctor` and `verify` against [Draft 2020-12 envelope and command schemas](../contracts/). It validates both normal/degraded/failure exits, plus negative schema controls that must be rejected. This is contract validation, **not** decryption or independent format verification.
 
 ## Principles
 
@@ -48,18 +48,28 @@ Field rules:
 | `4` | Verification failed (recovery pipeline verdict) |
 | `10`–`19` | Reserved for module-specific codes; documented here before first use |
 
-## Commands (planned unless explicitly stated)
+## Implemented commands (developer preview)
 
-In the developer preview, `version`, `scan <path> [--max-files N]`, and bounded read-only `doctor` are implemented. Scan returns file records directly in `data.files`; it does **not** write a manifest or verify plaintext. Doctor returns the `filters` and `instances` check results with measured exit status, stdout/stderr, timeout and truncation indicators; failed/incomplete checks produce `partial` / exit 1. On non-Windows systems both checks return `unsupportedPlatform`, not an empty success. `verify --original <path> --exported <path> [--trusted-plaintext-sha256 HEX]` now implements **read-only authorized export comparison**, returning `unverified` / exit 1 for incomplete evidence or `failed` / exit 4 for an export still bearing the known encryption wrapper or mismatching the trusted digest. It **does not decrypt**, invoke third-party applications, or pronounce `verified`.  All remaining behavior in the table below is planned.
+Run from the repository root on Windows with Racket CS 9.3, or use the packaged CLI if one is provided separately:
 
-| Command | Purpose | Issue |
-|---|---|---|
-| `fileboundary version` | build/commit, envelope schema version | #7 |
-| `fileboundary doctor` | run diagnostics, emit report | #3, #7 |
-| `fileboundary scan <path>` | inventory scan, write manifest | #4, #7 |
-| `fileboundary verify --manifest <p> --recovered-dir <d>` | verification pipeline, update verdicts | #5, #7 |
+| Command | Result | Exit code |
+| --- | --- | --- |
+| `racket src/cli.rkt version` | Version, runtime, schema | 0 |
+| `racket src/cli.rkt scan <path> [--max-files N]` | Bounded read-only file metadata records; **no saved manifest** | 0 / 1 / 2 / 3 |
+| `racket src/cli.rkt doctor` | Bounded, read-only `fltmc` filters/instances checks | 0 / 1 / 2 / 3 |
+| `racket src/cli.rkt verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX]` | Comparison of an **already authorized** export; never decrypts and never returns `verified` | 1 (`unverified`), 4 (`failed`), 2 / 3 on errors |
 
-`doctor` / `scan` / `verify` write their primary artifacts (`.fbreport.json`, `.fbmanifest.json`, `.fbaudit.jsonl`) to operator-specified output locations; defaults are under the current working directory's designated output folder, never inside the repository.
+CLI stdout contains only one JSON envelope. A zero exit code does **not** mean original ciphertext was decrypted: the scanner and diagnostics don't attempt it. The `verify` command conservatively reports `unverified` even after a trusted hash matches because independent format and reader checks are not performed.
+
+**Planned:** persistent `.fbmanifest.json`, `.fbreport.json` and `.fbaudit.jsonl` artifacts; manifest/resume and recovery reconciliation; independent full structure validation. These are not created by the present CLI and require subsequent Issue #3–#5 implementation.
+
+## Schema validation
+
+- `contracts/envelope-v1.schema.json` — shared versioned JSON envelope.
+- `contracts/command-data-v1.schema.json` — concrete `version`, `scan`, `doctor`, `verify` data structures.
+- `tests/validate_contract.py` — Windows CI integration script running the real Racket CLI and validating output with `jsonschema==4.23.0` (test-only Python dependency). It also deliberately mutates envelope keys and recovery verdicts to prove invalid JSON payloads fail schema validation.
+
+The CLI emits no sensitive input file contents or full paths in response metadata. Filenames and hashes may still be sensitive and must be retained locally.
 
 ## Reserved artifact extensions
 
@@ -78,13 +88,12 @@ These are git-ignored; artifacts live outside the repository ([security.md](secu
 - Machine-readable schemas live in `contracts/` once #7 lands; contract tests (golden JSON + schema validation) lock the envelope in CI.
 - A change to the contract without a same-PR update to this document and both READMEs is rejected in review.
 
-## Example (specification illustration)
+## Contract example (illustration, not recorded test output)
 
-The shape below illustrates the contract; it is not output from a shipped build.
+A version response has these fields, with `invocationId` and `durationMs` generated at runtime. For **actual** evidence, use the Windows CI run linked from the PR or invoke the CLI locally:
 
-```console
-$ fileboundary doctor --output D:\recovery\reports
-{"schemaVersion":"1.0","command":"doctor","invocationId":"…","status":"partial","data":{ "…":"…" },"warnings":[{ "code":"requiresElevation","message":"…" }],"errors":[],"durationMs":0}
+```json
+{"schemaVersion":"1.0","command":"version","invocationId":"example-not-a-real-invocation","status":"ok","data":{"version":"0.1.0-dev","runtime":"Racket CS","interface":"headless","schemaVersion":"1.0"},"warnings":[],"errors":[],"durationMs":0}
 ```
 
-Warnings in `data` items always carry an `evidence` class (`measured`, `heuristic`, `inferred`) — heuristic findings are never presented as measured facts ([security.md](security.md#integrity-semantics)).
+Any future response/schema change must include a versioning review, test updates, migration notes for breaking changes, and corresponding README updates.

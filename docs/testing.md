@@ -47,6 +47,12 @@ The headless Racket developer preview has a Windows-only workflow at `.github/wo
 
 `tests/recovery-test.rkt` uses synthetic E-SafeNet-like wrapper bytes and an intentionally minimal PDF-like export. It tests positive hints, known-plaintext SHA-256 matching and mismatch, still-wrapped rejection, no source writes, and refusal to promote a merely plausible file to a recovered/verified verdict. `tests/cli-test.rkt` tests the JSON status/exit-code contract. These tests **do not simulate actual E-SafeNet decryption**, full PDF validation, or vendor authorization.
 
+## Windows CLI JSON Schema gate
+
+The Windows core workflow installs a pinned **test-only** `jsonschema==4.23.0` Python dependency and executes `tests/validate_contract.py`. It invokes the actual Racket CLI for `version`, `scan`, `doctor`, `verify` and invalid-input cases on synthetic fixtures, validates both envelope and per-command payload schemas from `contracts/`, asserts exit-code/status consistency, and proves that removing a required key or forging a `verified` recovery verdict is rejected. Full-path and file-content leakage checks run on the emitted results.
+
+This increases actual contract coverage but does **not** finish release packaging, persistent artifacts, independent decrypted-file verification or CI branch protection (plan limitation in Issue #6).
+
 ## CI gates
 
 From #6 onward: a `windows-latest` workflow runs build + unit + integration + contract tests on every PR. Red CI blocks merge (required status check). The workflow may not use `continue-on-error`, skipped jobs, or weakened assertions to appear green — a workflow that cannot fail is not a gate.
