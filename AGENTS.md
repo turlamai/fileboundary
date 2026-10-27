@@ -45,9 +45,11 @@ Windows 10/11 x64，本地优先，无遥测。
   PR 中贴红、绿两份证据。
 - CLI 行为用契约测试锁定（golden JSON + schema 校验）。
 - 测试 fixtures 用检入仓库的生成器产出合成数据；禁止提交真实加密文件或个人数据。
-  唯一例外：`tests/fixtures/real-samples/` 下的单个真实样本（所有者批准，
-  见 [ADR-0003](docs/decisions/ADR-0003-real-encrypted-sample-exception.md)，
-  按其 SHA-256 pin 定，不得推广到其他文件）。
+  唯一例外：`tests/fixtures/real-samples/` 下的真实样本，均按 SHA-256 pin 定、
+  不得推广：单个加密样本（[ADR-0003](docs/decisions/ADR-0003-real-encrypted-sample-exception.md)；
+  所有者已要求移除，协调计划见
+  [ADR-0004](docs/decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)）
+  与同内容明文/密文对照对（[ADR-0004](docs/decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)）。
 - 禁止伪造测试结果：本地跑绿必须在 CI 复现；flaky 测试开 issue 隔离，
   不得静默跳过；`continue-on-error`、空测试、跳过断言不构成通过证据。
 - CI 建立前（Issue #6 之前），PR 描述必须贴出本地完整测试命令与输出。
