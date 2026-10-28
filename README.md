@@ -40,6 +40,8 @@ Every command emits one versioned JSON envelope on stdout ([contract](docs/cli-c
 
 Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a timestamped, bounded read-only Filter Manager inventory (fixed commands, 64 KiB/stream, 8 s timeout); `verify` now compares an **operator-provided authorized export** to the original source as a read-only evidence report; it does not create decrypted content or certify recovery. See [implementation limits](docs/implementation-slice.md).
 
+The scanner rejects symbolic-link roots and skips linked leaf files/directories, recording skipped entries as a `partial` result. This is a path-level safeguard, **not** a guarantee against all Windows reparse-point types or concurrent link swaps; those remain open under [#10](https://github.com/turinglambdaai/fileboundary/issues/10).
+
 ### Authorized export verification (read-only preview)
 
 After an approved vendor/administrator export has **already** produced a separate candidate file, compare it against the encrypted original:
