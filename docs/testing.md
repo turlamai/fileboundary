@@ -21,6 +21,10 @@ Some diagnostics can only produce full results elevated on the real machine. CI 
 - **Encryption-like corpus** — high-entropy blobs, known-wrapper format samples, extension/structure mismatches — covering every classification label in [architecture.md](architecture.md#inventory-module--planned-4).
 - **Round-trip baseline** — where the transparent-encryption mechanism is available on the operator's machine: known plaintext written through it, hash recorded, kept **outside** the repository and referenced by hash in tests.
 
+## Symlink traversal regression
+
+Synthetic inventory and CLI tests create a leaf symbolic link to a file outside the scan root. Direct inspection must reject the link; directory scans must omit it, increment `skippedCount`, and emit `partial` with `skippedEntries` in the CLI. Tests must not read or log the external fixture's bytes. This covers recognized filesystem symlinks, **not** arbitrary Windows reparse-point tags or link-swap races (tracked by [#10](https://github.com/turinglambdaai/fileboundary/issues/10)).
+
 ## Controlled encrypted/plaintext fixture regression
 
 Under [ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md), the only current binary fixtures are an encrypted/plaintext DOCX twin pair pinned by `tests/fixtures/real-samples/baseline.json`.
