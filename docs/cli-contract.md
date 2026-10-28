@@ -55,7 +55,7 @@ Run from the repository root on Windows with Racket CS 9.3, or use the packaged 
 | Command | Result | Exit code |
 | --- | --- | --- |
 | `racket src/cli.rkt version` | Version, runtime, schema | 0 |
-| `racket src/cli.rkt scan <path> [--max-files N]` | Bounded read-only file metadata records; **no saved manifest** | 0 / 1 / 2 / 3 |
+| `racket src/cli.rkt scan <path> [--max-files N]` | Bounded read-only file metadata records; symlinks skipped with `skippedCount` and `partial`; **no saved manifest** | 0 / 1 / 2 / 3 |
 | `racket src/cli.rkt doctor` | Bounded, read-only `fltmc` filters/instances checks | 0 / 1 / 2 / 3 |
 | `racket src/cli.rkt verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX]` | Comparison of an **already authorized** export; never decrypts and never returns `verified` | 1 (`unverified`), 4 (`failed`), 2 / 3 on errors |
 | `racket src/cli.rkt decrypt --in FILE --out FILE [--pad PATH]` | Decrypt an E-SafeNet-wrapped file with the policy pad: OOXML reassembled with per-entry CRC verification, PDF with semantic head rebuild + xref spot-check ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)) | 0, 3 (pad/format mismatch) |
