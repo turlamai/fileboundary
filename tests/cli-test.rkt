@@ -55,9 +55,9 @@
        (check-equal? (hash-ref data 'recoveryVerdict) "unverified"))
      (check-false (regexp-match? #rx"not-encrypted, not-a-pdf" (jsexpr->string result))))
    ;; A linked leaf is counted as skipped, not hashed or returned as a file.
-   (define outside (make-temporary-file "fileboundary-cli-external-~a"))
-   (define link (build-path tmp "linked-external.bin"))
-   (dynamic-wind
+   (let* ([outside (make-temporary-file "fileboundary-cli-external-~a")]
+          [link (build-path tmp "linked-external.bin")])
+     (dynamic-wind
     void
     (lambda ()
       (call-with-output-file outside
@@ -77,7 +77,7 @@
         (check-equal? (hash-ref result 'status) "error")))
     (lambda ()
       (when (link-exists? link) (delete-file link))
-      (delete-file outside)))
+      (delete-file outside)))))
  (lambda () (delete-directory/files tmp)))
 
 ;; Authorized export verification is always evidence-based and never writes
