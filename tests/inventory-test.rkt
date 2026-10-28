@@ -65,6 +65,7 @@
 (define link-root (make-temporary-file "fileboundary-link-root-~a" 'directory))
 (define external-root (make-temporary-file "fileboundary-external-~a" 'directory))
 (define leaf-link (build-path link-root "outside.bin"))
+(define directory-link (build-path link-root "linked-dir"))
 (dynamic-wind
  void
  (lambda ()
@@ -78,8 +79,21 @@
    (let-values ([(files skipped truncated?) (scan-tree link-root 10)])
      (check-equal? files '())
      (check-equal? skipped 1)
-     (check-false truncated?)))
+     (check-false truncated?))
+   ;; The final component is a regular file, but an ancestor is a link.
+   ;; Previously the path type check examined only the final component.
+   (make-file-or-directory-link (path->directory-path external-root) directory-link)
+   (check-exn exn:fail?
+              (lambda () (inspect-file
+                          (build-path directory-link "private-synthetic.bin"))))
+   (check-exn exn:fail?
+              (lambda () (scan-tree
+                          (build-path directory-link "private-synthetic.bin")))))
  (lambda ()
+   (when (link-exists? directory-link)
+     (if (eq? (system-type 'os) 'windows)
+         (delete-directory directory-link)
+         (delete-file directory-link)))
    (when (link-exists? leaf-link) (delete-file leaf-link))
    (delete-directory/files link-root)
    (delete-directory/files external-root)))
