@@ -3,6 +3,7 @@
 (require rackunit
          json
          racket/file
+         racket/path
          racket/port
          "../src/cli.rkt")
 
@@ -56,7 +57,8 @@
      (check-false (regexp-match? #rx"not-encrypted, not-a-pdf" (jsexpr->string result))))
    ;; A linked leaf is counted as skipped, not hashed or returned as a file.
    (let* ([outside (make-temporary-file "fileboundary-cli-external-~a")]
-          [link (build-path tmp "linked-external.bin")])
+          [link (build-path tmp "linked-external.bin")]
+          [parent-link (build-path tmp "linked-parent")])
      (dynamic-wind
     void
     (lambda ()
@@ -74,8 +76,21 @@
         (check-false (regexp-match? #rx"external-synthetic-secret" (jsexpr->string result))))
       (let-values ([(code result) (invoke (list "scan" (path->string link)))])
         (check-equal? code 3)
+        (check-equal? (hash-ref result 'status) "error"))
+      ;; A regular leaf under a linked parent must also be rejected.
+      (make-file-or-directory-link (path->directory-path (path-only outside))
+                                   parent-link)
+      (let-values ([(code result)
+                    (invoke (list "scan" (path->string
+                                          (build-path parent-link
+                                                      (file-name-from-path outside)))))])
+        (check-equal? code 3)
         (check-equal? (hash-ref result 'status) "error")))
     (lambda ()
+      (when (link-exists? parent-link)
+        (if (eq? (system-type 'os) 'windows)
+            (delete-directory parent-link)
+            (delete-file parent-link)))
       (when (link-exists? link) (delete-file link))
       (delete-file outside)))))
  (lambda () (delete-directory/files tmp)))
