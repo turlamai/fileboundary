@@ -58,3 +58,28 @@
      (check-equal? (length limited) 1)
      (check-true was-truncated?)))
  (lambda () (delete-directory/files tmp)))
+
+
+;; Regression: a leaf symlink must never cause a scan to read outside its root.
+;; This test intentionally creates the target in a separate temporary directory.
+(define link-root (make-temporary-file "fileboundary-link-root-~a" 'directory))
+(define external-root (make-temporary-file "fileboundary-external-~a" 'directory))
+(define leaf-link (build-path link-root "outside.bin"))
+(dynamic-wind
+ void
+ (lambda ()
+   (define external (build-path external-root "private-synthetic.bin"))
+   (call-with-output-file external
+     (lambda (out) (write-bytes #"synthetic-outside-scan-root" out))
+     #:mode 'binary #:exists 'error)
+   (make-file-or-directory-link external leaf-link)
+   (check-equal? (file-or-directory-type leaf-link #f) 'link)
+   (check-exn exn:fail? (lambda () (inspect-file leaf-link)))
+   (let-values ([(files skipped truncated?) (scan-tree link-root 10)])
+     (check-equal? files '())
+     (check-equal? skipped 1)
+     (check-false truncated?)))
+ (lambda ()
+   (when (link-exists? leaf-link) (delete-file leaf-link))
+   (delete-directory/files link-root)
+   (delete-directory/files external-root)))
