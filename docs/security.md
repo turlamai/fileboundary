@@ -73,6 +73,10 @@ All of the following, recorded as evidence in the audit log:
 - **Issue hygiene.** Diagnostics output, experiment logs, and memory/IOCTL dumps pasted into issues must be sanitized first: no file content, no keys, no personal paths that aren't needed for the report.
 - **Local-first.** No telemetry, no accounts; nothing leaves the machine. The only network traffic is an explicit operator-initiated update check or download ([ADR-0008](decisions/ADR-0008-release-channel-and-self-update.md)) — there is no background traffic of any kind.
 
+## Read-only scan scope limitation
+
+The inventory preview uses no-follow path-type checks to reject symbolic-link source paths and skip linked directory entries. Skipped entries are reported as degraded results, not silently included. This is **not** a race-free guarantee: a path may change between inspection and opening, and Windows reparse-point variants beyond recognized symlinks still need handle-level validation. Do not scan untrusted, concurrently mutable trees as if this were a security boundary; see [#10](https://github.com/turinglambdaai/fileboundary/issues/10). The scanner does not modify protection software, whitelist configuration, or keys.
+
 ## Elevation and degradation
 
 Diagnostics that require administrator rights must run in one of two modes: elevated (with elevation recorded in the report) or degraded (each affected check reports `requiresElevation`). Failing silently, returning empty results, or guessing is a correctness bug, not a graceful degradation.
