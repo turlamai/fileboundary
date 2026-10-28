@@ -45,7 +45,8 @@
     (error 'inspect-file "source path contains a filesystem link"))
   (unless (eq? (file-or-directory-type source #f) 'file)
     (error 'inspect-file "source must be an accessible regular file, not a link"))
-  ;; Reject links in every path component. This does not close path-swap races.\n  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
+  ;; Reject links in every path component. This does not close path-swap races.
+  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
   (call-with-input-file source
     (lambda (in)
       (define probe (read-bytes 4096 in))
@@ -70,7 +71,9 @@
     (raise-argument-error 'scan-tree "integer from 1 through 100000" max-files))
   (unless (memq (file-or-directory-type source #f) '(file directory))
     (error 'scan-tree "source must be an accessible regular file or directory, not a link"))
-  ;; Link-aware type checks keep leaf symlinks and linked directories out.\n  ;; Windows non-symlink reparse points require a separate OS-level check.\n  (define records '())
+  ;; Link-aware type checks keep leaf symlinks and linked directories out.
+  ;; Windows non-symlink reparse points require a separate OS-level check.
+  (define records '())
   (define skipped 0)
   (define truncated? #f)
   (define (walk path)
