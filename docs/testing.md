@@ -23,7 +23,7 @@ Some diagnostics can only produce full results elevated on the real machine. CI 
 
 ## Symlink traversal regression
 
-Synthetic inventory and CLI tests create a leaf symbolic link to a file outside the scan root. Direct inspection must reject the link; directory scans must omit it, increment `skippedCount`, and emit `partial` with `skippedEntries` in the CLI. Tests must not read or log the external fixture's bytes. This covers recognized filesystem symlinks, **not** arbitrary Windows reparse-point tags or link-swap races (tracked by [#10](https://github.com/turinglambdaai/fileboundary/issues/10)).
+Synthetic inventory and CLI tests create a leaf symbolic link and a linked ancestor directory pointing outside the scan root. Direct inspection must reject both a linked leaf and a regular leaf reached through a linked ancestor; directory scans must omit linked entries, increment `skippedCount`, and emit `partial` with `skippedEntries` in the CLI. Tests must not read or log the external fixture's bytes. This covers recognized filesystem symlinks, **not** arbitrary Windows reparse-point tags or link-swap races (tracked by [#10](https://github.com/turinglambdaai/fileboundary/issues/10)).
 
 ## Controlled encrypted/plaintext fixture regression
 
