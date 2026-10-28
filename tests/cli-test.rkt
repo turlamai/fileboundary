@@ -53,7 +53,31 @@
      (let ([data (hash-ref result 'data)])
        (check-equal? (hash-ref data 'count) 1)
        (check-equal? (hash-ref data 'recoveryVerdict) "unverified"))
-     (check-false (regexp-match? #rx"not-encrypted, not-a-pdf" (jsexpr->string result)))))
+     (check-false (regexp-match? #rx"not-encrypted, not-a-pdf" (jsexpr->string result))))
+   ;; A linked leaf is counted as skipped, not hashed or returned as a file.
+   (define outside (make-temporary-file "fileboundary-cli-external-~a"))
+   (define link (build-path tmp "linked-external.bin"))
+   (dynamic-wind
+    void
+    (lambda ()
+      (call-with-output-file outside
+        (lambda (out) (write-bytes #"external-synthetic-secret" out))
+        #:mode 'binary #:exists 'truncate)
+      (make-file-or-directory-link outside link)
+      (let-values ([(code result) (invoke (list "scan" (path->string tmp)))])
+        (check-equal? code 1)
+        (check-equal? (hash-ref result 'status) "partial")
+        (check-equal? (hash-ref (hash-ref result 'data) 'count) 1)
+        (check-equal? (hash-ref (hash-ref result 'data) 'skippedCount) 1)
+        (check-equal? (hash-ref (car (hash-ref (hash-ref result 'data) 'files)) 'fileName) "fixture.bin")
+        (check-equal? (hash-ref (car (hash-ref result 'warnings)) 'code) "skippedEntries")
+        (check-false (regexp-match? #rx"external-synthetic-secret" (jsexpr->string result))))
+      (let-values ([(code result) (invoke (list "scan" (path->string link)))])
+        (check-equal? code 3)
+        (check-equal? (hash-ref result 'status) "error")))
+    (lambda ()
+      (when (link-exists? link) (delete-file link))
+      (delete-file outside)))
  (lambda () (delete-directory/files tmp)))
 
 ;; Authorized export verification is always evidence-based and never writes
