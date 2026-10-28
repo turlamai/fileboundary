@@ -35,7 +35,7 @@ Gaps to resolve **before** treating this as a trustworthy diagnostic tool:
 2. **Process timeout.** `RunReadOnlyCommand` calls blocking `ReadToEnd()` on stdout and stderr before `WaitForExit(15000)`. A hung process can keep the read blocked, defeating the intended timeout. Drain streams asynchronously with bounded termination handling; never kill or modify the inspected protection services.
 3. **CLI drift.** The prototype uses `SchemaVersion`, `Action`, `Files` and capitalized properties, prints non-JSON help/selftest, and uses exit codes `0/1/2` with semantics that conflict with `docs/cli-contract.md`. Do not mark #7 implemented until fixed and tested.
 4. **Diagnostics evidence.** Raw `fltmc` text and generic warnings are not structured evidence. A failed `fltmc` command must not be interpreted as “no filters”; capture command success/exit code, elevation and errors distinctly.
-5. **Verification semantics.** Magic bytes and two hashes from the same transparently filtered read view are insufficient for a “verified” or “decrypted” verdict. Keep `candidate-header-recognized` distinct from recovery success, and require independent validation and an authorized export provenance record for #5.
+5. **Verification semantics.** Magic bytes and two hashes from the same transparently filtered read view are insufficient for a “verified” or “decrypted” verdict. Keep `candidate-header-recognized` distinct from recovery success, and require independent validation and a recovery provenance record for #5.
 6. **Privacy / output.** Full root paths, process executable paths and exception messages can be present in JSON; reports are sensitive. Add opt-in path inclusion/redaction and prevent test/report data from being committed.
 7. **Build claims.** The prototype compiles via installed Framework `csc.exe` and references `System.Web.Extensions`. Presence of that compiler and Windows execution were **not** tested here. The checked-in prototype workflow is not evidence that this new repository's CI exists or passes.
 
@@ -44,7 +44,7 @@ Gaps to resolve **before** treating this as a trustworthy diagnostic tool:
 - **#1** Import the exact, hashed source and build scripts on a fresh branch only **after** this review; quarantine unsafe behavior where necessary. Do not merge untested code or old README/AGENTS content over this repository's charter. Run `build.cmd` and `tests\\smoke.cmd` on Windows, attach verbatim results and a CLI behavior transcript.
 - **#2** Record the accepted stack in ADR-0002 and split engine/diagnostics/inventory/recovery/contracts/CLI/GUI so interfaces can be tested without opening a desktop window.
 - **#6 / #7** Establish a real Windows CI build, structural synthetic fixtures and versioned JSON contract tests before calling the imported prototype deployable.
-- **#5** Treat recovery as an authorized export **plus independent verification**, not a signature or same-process hash match.
+- **#5** Treat recovery as an evidence-producing path **plus independent verification**, not a signature or same-process hash match.
 
 ## Evidence limits
 

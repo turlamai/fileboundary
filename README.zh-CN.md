@@ -1,6 +1,6 @@
 # FileBoundary
 
-**Windows 原生的文件加密诊断与授权恢复工具集。本地优先，原生 Windows GUI 与 agent 友好 CLI。**
+**Windows 原生的文件加密诊断与对抗恢复研究工具集。本地优先，原生 Windows GUI 与 agent 友好 CLI。**
 
 [English](README.md) · **中文**
 
@@ -51,7 +51,7 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 
 观察到的现象：白名单内的 PDF 软件能正常打开和保存；文件保存到磁盘后可能被透明加密；非白名单软件可能无法正确读取这些文件。已有一批历史文件被加密，需要分析与恢复。
 
-FileBoundary 的目标是让这一局面变得可度量、可恢复：管理员权限用于诊断，恢复只通过授权机制进行。
+FileBoundary 的目标是让这一局面变得可度量、可破解：所有者研究这套机制，尝试一切可行的恢复路径——有授权渠道先走授权渠道，没有就走对抗路径——最终判定只来自证据管线（[ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)）。
 
 ## FileBoundary 做什么
 
@@ -60,20 +60,19 @@ FileBoundary 的目标是让这一局面变得可度量、可恢复：管理员�
 1. **分析加密机制** —— 枚举 minifilter、过滤驱动与服务配置、注入模块、hook 启发式检测，以及探针文件上的 I/O 行为（[#3](https://github.com/turinglambdaai/fileboundary/issues/3)）。
 2. **诊断** —— 输出机器可读的报告：当前过滤栈与各进程的读写行为。
 3. **盘点加密文件** —— 批量扫描磁盘，按加密可能性分类，记录文件状态、SHA-256 与格式信息（[#4](https://github.com/turinglambdaai/fileboundary/issues/4)）。
-4. **经授权渠道恢复** —— 只通过防护体系认可的机制导出或解密：厂商自己的管理控制台、经白名单应用的导出路径、或所有者合法持有的密钥（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)）。
+4. **恢复——不设渠道限制** —— 有厂商授权渠道就走授权渠道；没有就走对抗路径：白名单伴随与伪装、从密钥管理服务/驱动/进程内存提取密钥、基于格式分析的独立解密（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
 5. **验证完整性** —— 恢复文件只有通过完整验证管线才可标记 `verified`；复制成功不等于解密成功（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)）。
 6. **管理恢复流程** —— 基于 manifest 的选择、每次尝试的审计记录、恢复集合与 manifest 的对账（[docs/recovery-workflow.md](docs/recovery-workflow.md)）。
 7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turinglambdaai/fileboundary/issues/7)）。
 8. **工程严谨性** —— Windows CI、自动化测试与双语文档从第一天建立（[#6](https://github.com/turinglambdaai/fileboundary/issues/6)、[#8](https://github.com/turinglambdaai/fileboundary/issues/8)）。
 
-## 硬边界
+## 研究纲领
 
-FileBoundary 是机器所有者的诊断与恢复工具，不是击穿防护的工具：
+FileBoundary 是面向机器所有者的对抗恢复研究项目（[ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)）。在操作者自己的机器上**不设技术禁令**——密钥提取、白名单研究与伪装、驱动探测、密码分析都是正当研究课题。固定的是范围与证据：
 
-- 原始文件**只读**打开；写操作只发生在指定的恢复输出目录。
-- 管理员权限用于诊断。它**不**意味着拥有加密密钥，FileBoundary 从不如此假设。
-- FileBoundary **不**绕过 DLP 或访问控制、不从密钥管理服务或驱动提取密钥、不伪装白名单进程、不破坏防护驱动、不尝试击穿加密体系。
-- 「成功」只以**证据**声明：复制成功不是解密；文件头可识别不是明文的证明。完整语义见 [docs/security.md](docs/security.md)。
+- **范围** —— 只针对操作者拥有并管理的机器；仓库私有、仅限内部使用，不对外发布任何内容。
+- **数据安全** —— 原始文件默认只读打开；改动防护系统状态的实验必须先记录方案、先在副本上跑（[docs/security.md](docs/security.md)）。
+- **证据** —— 复制成功不是解密；文件头可识别不是明文的证明。无论候选明文由哪种技术产生，`verified` 判定只来自 [docs/security.md](docs/security.md) 的验证管线。
 
 ## 产品形态
 
@@ -99,8 +98,9 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 | 文档 | 内容 |
 |---|---|
 | [架构](docs/architecture.md) | 模块图、数据流、分类语义、技术姿态 |
-| [安全模型](docs/security.md) | 授权模型、硬边界、完整性语义、数据安全 |
-| [恢复流程](docs/recovery-workflow.md) | 六阶段授权恢复流程与判定规则 |
+| [安全模型](docs/security.md) | 授权基础、技术范围、固定规则、完整性语义、数据安全 |
+| [对抗研究纲领](docs/adversarial-research.md) | 攻击面、研究线、实验协议、优先级 |
+| [恢复流程](docs/recovery-workflow.md) | 六阶段恢复流程与判定规则 |
 | [CLI 契约](docs/cli-contract.md) | 版本化 JSON envelope、命令、退出码、版本策略 |
 | [测试](docs/testing.md) | 测试分层、fixtures、红绿规则、CI 门禁 |
 | [开发](docs/development.md) | 环境、工作流、产物卫生 |
@@ -116,7 +116,7 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 | 模块化 Windows 应用架构 | [#2](https://github.com/turinglambdaai/fileboundary/issues/2) | 规划中 |
 | Windows 文件加密诊断 | [#3](https://github.com/turinglambdaai/fileboundary/issues/3) | 规划中 |
 | 加密文件盘点与分类 | [#4](https://github.com/turinglambdaai/fileboundary/issues/4) | 规划中 |
-| 授权文件恢复与验证 | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | 规划中 |
+| 文件恢复与验证 | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | 规划中 |
 | Windows CI 与自动化测试 | [#6](https://github.com/turinglambdaai/fileboundary/issues/6) | 规划中 |
 | 版本化 JSON CLI 契约 | [#7](https://github.com/turinglambdaai/fileboundary/issues/7) | 规划中 |
 | 双语文档 | [#8](https://github.com/turinglambdaai/fileboundary/issues/8) | 规划中 |

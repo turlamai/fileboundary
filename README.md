@@ -1,6 +1,6 @@
 # FileBoundary
 
-**Windows-native file encryption diagnostics and authorized recovery toolkit. Local-first, with a native Windows GUI and an agent-friendly CLI.**
+**Windows-native file encryption diagnostics and adversarial recovery research toolkit. Local-first, with a native Windows GUI and an agent-friendly CLI.**
 
 **English** · [中文](README.zh-CN.md)
 
@@ -51,7 +51,7 @@ The target machine runs third-party transparent file encryption software that co
 
 Observed symptoms: whitelisted PDF readers open and save normally; files written to disk may be transparently encrypted; non-whitelisted software may fail to read those files. A backlog of historical files is already encrypted and needs analysis and recovery.
 
-FileBoundary exists to make this situation measurable and recoverable: administrator rights are used for diagnosis, and recovery is performed exclusively through authorized mechanisms.
+FileBoundary exists to make this situation measurable and beatable: the owner studies the mechanism, attempts every recovery path — sanctioned channels first when they exist, then the adversarial tracks — and accepts a verdict only from the evidence pipeline ([ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)).
 
 ## What FileBoundary does
 
@@ -60,20 +60,19 @@ Planned scope — each capability lands through its tracked issue:
 1. **Analyze the encryption mechanism** — enumerate minifilters, filter-driver and service configuration, injected modules, hook heuristics, and file I/O behavior on probe files ([#3](https://github.com/turinglambdaai/fileboundary/issues/3)).
 2. **Diagnose** — produce a machine-readable report of the active filter stack and per-process read/write behavior.
 3. **Inventory encrypted files** — batch-scan drives, classify files by encryption likelihood, record state, SHA-256 and format information ([#4](https://github.com/turinglambdaai/fileboundary/issues/4)).
-4. **Recover through authorized channels** — export or decrypt only via mechanisms the protection system sanctions: its own management console, export paths through whitelisted applications, or keys the owner legitimately holds ([#5](https://github.com/turinglambdaai/fileboundary/issues/5)).
+4. **Recover — by any effective path** — vendor-sanctioned export channels when available; otherwise the adversarial tracks: whitelist ride-along and impersonation, key extraction from the key management service, drivers or process memory, standalone decryption from format analysis ([#5](https://github.com/turinglambdaai/fileboundary/issues/5), [research program](docs/adversarial-research.md)).
 5. **Verify integrity** — a recovered file is `verified` only after the full verification pipeline; a successful copy is not a successful decryption ([#5](https://github.com/turinglambdaai/fileboundary/issues/5)).
 6. **Manage the recovery flow** — manifest-driven selection, per-attempt audit trail, reconciliation of recovered set against the manifest ([docs/recovery-workflow.md](docs/recovery-workflow.md)).
 7. **Two front ends** — a native Windows GUI and a CLI that speaks a versioned JSON contract for agents and automation ([#7](https://github.com/turinglambdaai/fileboundary/issues/7)).
 8. **Engineering rigor** — Windows CI, automated tests and bilingual documentation from day one ([#6](https://github.com/turinglambdaai/fileboundary/issues/6), [#8](https://github.com/turinglambdaai/fileboundary/issues/8)).
 
-## Hard boundaries
+## Research mandate
 
-FileBoundary is a diagnostics and recovery tool for the machine owner. It is not a protection-defeating tool:
+FileBoundary is an adversarial recovery research program for the machine owner ([ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)). There are no technique prohibitions on the operator-owned machine — key extraction, whitelist study and impersonation, driver probing, crypto analysis are all legitimate research subjects here. What is fixed is scope and evidence:
 
-- Original files are opened **read-only**; writes happen only in designated recovery output locations.
-- Administrator rights enable diagnosis. They do **not** imply access to encryption keys, and FileBoundary never assumes otherwise.
-- FileBoundary does **not** bypass DLP or access controls, extract keys from the key management service or drivers, impersonate whitelist processes, tamper with protection drivers, or attempt to defeat the encryption system.
-- Success is claimed **only with evidence**: a successful copy is not decryption; a recognizable file header is not proof of plaintext. The full semantics are defined in [docs/security.md](docs/security.md).
+- **Scope** — only machines the operator owns and administers; the repository is private, internal-use, and nothing is published.
+- **Data safety** — originals open read-only by default; experiments that mutate protection-system state require a recorded plan and run against disposable copies first ([docs/security.md](docs/security.md)).
+- **Evidence** — a successful copy is not decryption; a recognizable header is not plaintext. Every recovery verdict comes from the pipeline in [docs/security.md](docs/security.md), regardless of which technique produced the candidate plaintext.
 
 ## Product shape
 
@@ -99,8 +98,9 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 | Document | Contents |
 |---|---|
 | [Architecture](docs/architecture.md) | module map, data flow, classification semantics, technology posture |
-| [Security](docs/security.md) | authorization model, hard boundaries, integrity semantics, data safety |
-| [Recovery workflow](docs/recovery-workflow.md) | the six-stage authorized recovery process and verdict rules |
+| [Security](docs/security.md) | authorization basis, technique scope, fixed rules, integrity semantics, data safety |
+| [Adversarial research](docs/adversarial-research.md) | attack surface, research tracks, experiment protocol, priority |
+| [Recovery workflow](docs/recovery-workflow.md) | the six-stage recovery process and verdict rules |
 | [CLI contract](docs/cli-contract.md) | versioned JSON envelope, commands, exit codes, versioning policy |
 | [Testing](docs/testing.md) | test layers, fixtures, red/green rules, CI gates |
 | [Development](docs/development.md) | environment, workflow, artifact hygiene |
@@ -116,7 +116,7 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 | Modular Windows application architecture | [#2](https://github.com/turinglambdaai/fileboundary/issues/2) | planned |
 | Windows file encryption diagnostics | [#3](https://github.com/turinglambdaai/fileboundary/issues/3) | planned |
 | Encrypted file inventory and classification | [#4](https://github.com/turinglambdaai/fileboundary/issues/4) | planned |
-| Authorized file recovery verification | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | planned |
+| File recovery and verification | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | planned |
 | Windows CI and automated tests | [#6](https://github.com/turinglambdaai/fileboundary/issues/6) | planned |
 | Versioned JSON CLI contract | [#7](https://github.com/turinglambdaai/fileboundary/issues/7) | planned |
 | Bilingual documentation | [#8](https://github.com/turinglambdaai/fileboundary/issues/8) | planned |
