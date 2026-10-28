@@ -1,6 +1,6 @@
 # ADR-0001: Project scope and boundaries
 
-- **Status:** accepted — **clause 4 (authorized mechanisms only; technique prohibitions) superseded by [ADR-0005](ADR-0005-adversarial-recovery-mandate.md); all other clauses remain in force**
+- **Status:** accepted — **clause 4 (authorized mechanisms only; technique prohibitions) superseded by [ADR-0006](ADR-0006-adversarial-recovery-mandate.md); all other clauses remain in force**
 - **Date:** 2026-10-27
 - **Deciders:** owner (turinglambdaai)
 

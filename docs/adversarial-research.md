@@ -1,6 +1,6 @@
 # Adversarial Research Program
 
-The working research plan for defeating the transparent-encryption constraint on the operator machine. It implements the adversarial mandate of [ADR-0005](decisions/ADR-0005-adversarial-recovery-mandate.md); the fixed rules it operates under are in [security.md](security.md) (machine scope, containment, data safety, evidence discipline). Every claim here is evidence-classed the same way diagnostics output is: **measured**, **heuristic**, or **inferred**.
+The working research plan for defeating the transparent-encryption constraint on the operator machine. It implements the adversarial mandate of [ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md); the fixed rules it operates under are in [security.md](security.md) (machine scope, containment, data safety, evidence discipline). Every claim here is evidence-classed the same way diagnostics output is: **measured**, **heuristic**, or **inferred**.
 
 ## Goal
 

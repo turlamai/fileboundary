@@ -1,6 +1,6 @@
 # Security Model
 
-This document defines the authorization basis of FileBoundary, the technique scope of its adversarial mandate ([ADR-0005](decisions/ADR-0005-adversarial-recovery-mandate.md)), the fixed safety rules the mandate operates under, and what counts as evidence. It is binding for every contributor (see [`AGENTS.md`](../AGENTS.md)); PRs touching diagnostics, recovery, permissions, or output writing must be checked line-by-line against this page.
+This document defines the authorization basis of FileBoundary, the technique scope of its adversarial mandate ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)), the fixed safety rules the mandate operates under, and what counts as evidence. It is binding for every contributor (see [`AGENTS.md`](../AGENTS.md)); PRs touching diagnostics, recovery, permissions, or output writing must be checked line-by-line against this page.
 
 ## Authorization basis
 
@@ -13,7 +13,7 @@ Two containment rules follow from this basis and are not negotiable:
 
 ## Technique scope (adversarial mandate)
 
-Per [ADR-0005](decisions/ADR-0005-adversarial-recovery-mandate.md), there are **no technique prohibitions** on the operator-owned machine. The previous "hard boundaries" list — key extraction, whitelist impersonation, driver tampering, defeating reverse engineering — is retired: these are now legitimate research and recovery subjects, organized as the tracks in [adversarial-research.md](adversarial-research.md).
+Per [ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md), there are **no technique prohibitions** on the operator-owned machine. The previous "hard boundaries" list — key extraction, whitelist impersonation, driver tampering, defeating reverse engineering — is retired: these are now legitimate research and recovery subjects, organized as the tracks in [adversarial-research.md](adversarial-research.md).
 
 | Technique area | Status |
 |---|---|

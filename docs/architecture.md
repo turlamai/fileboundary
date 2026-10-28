@@ -12,7 +12,7 @@ Third-party transparent file encryption on Windows typically combines:
 - a **key management service** holding per-file or per-policy keys;
 - transparent encryption on write and decryption on read for whitelisted processes.
 
-FileBoundary first observes and measures these components. Under the adversarial mandate ([ADR-0005](decisions/ADR-0005-adversarial-recovery-mandate.md)) it also probes and — in gated, audit-logged experiments ([security.md](security.md#technique-scope)) — modifies them, and drives recovery through whichever path proves effective. Outcomes are always verified.
+FileBoundary first observes and measures these components. Under the adversarial mandate ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)) it also probes and — in gated, audit-logged experiments ([security.md](security.md#technique-scope)) — modifies them, and drives recovery through whichever path proves effective. Outcomes are always verified.
 
 ## Principles
 

@@ -51,7 +51,7 @@ The target machine runs third-party transparent file encryption software that co
 
 Observed symptoms: whitelisted PDF readers open and save normally; files written to disk may be transparently encrypted; non-whitelisted software may fail to read those files. A backlog of historical files is already encrypted and needs analysis and recovery.
 
-FileBoundary exists to make this situation measurable and beatable: the owner studies the mechanism, attempts every recovery path — sanctioned channels first when they exist, then the adversarial tracks — and accepts a verdict only from the evidence pipeline ([ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)).
+FileBoundary exists to make this situation measurable and beatable: the owner studies the mechanism, attempts every recovery path — sanctioned channels first when they exist, then the adversarial tracks — and accepts a verdict only from the evidence pipeline ([ADR-0006](docs/decisions/ADR-0006-adversarial-recovery-mandate.md)).
 
 ## What FileBoundary does
 
@@ -68,7 +68,7 @@ Planned scope — each capability lands through its tracked issue:
 
 ## Research mandate
 
-FileBoundary is an adversarial recovery research program for the machine owner ([ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)). There are no technique prohibitions on the operator-owned machine — key extraction, whitelist study and impersonation, driver probing, crypto analysis are all legitimate research subjects here. What is fixed is scope and evidence:
+FileBoundary is an adversarial recovery research program for the machine owner ([ADR-0006](docs/decisions/ADR-0006-adversarial-recovery-mandate.md)). There are no technique prohibitions on the operator-owned machine — key extraction, whitelist study and impersonation, driver probing, crypto analysis are all legitimate research subjects here. What is fixed is scope and evidence:
 
 - **Scope** — only machines the operator owns and administers; the repository is private, internal-use, and nothing is published.
 - **Data safety** — originals open read-only by default; experiments that mutate protection-system state require a recorded plan and run against disposable copies first ([docs/security.md](docs/security.md)).

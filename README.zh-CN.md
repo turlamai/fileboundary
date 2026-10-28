@@ -51,7 +51,7 @@ racket src/cli.rkt verify --original "C:\\Encrypted\\document.pdf" --exported "D
 
 观察到的现象：白名单内的 PDF 软件能正常打开和保存；文件保存到磁盘后可能被透明加密；非白名单软件可能无法正确读取这些文件。已有一批历史文件被加密，需要分析与恢复。
 
-FileBoundary 的目标是让这一局面变得可度量、可破解：所有者研究这套机制，尝试一切可行的恢复路径——有授权渠道先走授权渠道，没有就走对抗路径——最终判定只来自证据管线（[ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)）。
+FileBoundary 的目标是让这一局面变得可度量、可破解：所有者研究这套机制，尝试一切可行的恢复路径——有授权渠道先走授权渠道，没有就走对抗路径——最终判定只来自证据管线（[ADR-0006](docs/decisions/ADR-0006-adversarial-recovery-mandate.md)）。
 
 ## FileBoundary 做什么
 
@@ -68,7 +68,7 @@ FileBoundary 的目标是让这一局面变得可度量、可破解：所有者�
 
 ## 研究纲领
 
-FileBoundary 是面向机器所有者的对抗恢复研究项目（[ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)）。在操作者自己的机器上**不设技术禁令**——密钥提取、白名单研究与伪装、驱动探测、密码分析都是正当研究课题。固定的是范围与证据：
+FileBoundary 是面向机器所有者的对抗恢复研究项目（[ADR-0006](docs/decisions/ADR-0006-adversarial-recovery-mandate.md)）。在操作者自己的机器上**不设技术禁令**——密钥提取、白名单研究与伪装、驱动探测、密码分析都是正当研究课题。固定的是范围与证据：
 
 - **范围** —— 只针对操作者拥有并管理的机器；仓库私有、仅限内部使用，不对外发布任何内容。
 - **数据安全** —— 原始文件默认只读打开；改动防护系统状态的实验必须先记录方案、先在副本上跑（[docs/security.md](docs/security.md)）。

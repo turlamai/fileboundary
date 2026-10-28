@@ -8,7 +8,7 @@
 FileBoundary 是 Windows 透明文件加密的**对抗恢复研究**项目：机器所有者对自己机器上的第三方透明加密体系（minifilter + 注入 hook + 进程白名单 + 密钥管理服务）做全面研究——机制度量、格式与密码分析、白名单机制研究与利用、密钥提取——最终目标是**以可验证的证据恢复被加密的存量文件**。载体是一份可测试的领域引擎 + 原生 Windows GUI + agent 友好 CLI（版本化 JSON 契约）。目标平台 Windows 10/11 x64，本地优先，无遥测。
 
 对抗手段不设禁令：驱动与服务、白名单、加密层、进程内存都在研究范围内。授权基础、技术范围与有门禁的实验协议见
-[docs/security.md](docs/security.md) 与 [ADR-0005](docs/decisions/ADR-0005-adversarial-recovery-mandate.md)；
+[docs/security.md](docs/security.md) 与 [ADR-0006](docs/decisions/ADR-0006-adversarial-recovery-mandate.md)；
 研究纲领见 [docs/adversarial-research.md](docs/adversarial-research.md)。以下四条不变式对所有工作生效：
 
 1. 只研究操作者拥有并管理的机器；本仓库任何产物不用于他人系统，不对外发布。

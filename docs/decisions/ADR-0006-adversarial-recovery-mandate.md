@@ -1,4 +1,4 @@
-# ADR-0005: Adversarial recovery mandate — technique prohibitions lifted, scope and evidence rules fixed
+# ADR-0006: Adversarial recovery mandate — technique prohibitions lifted, scope and evidence rules fixed
 
 - **Status:** accepted
 - **Date:** 2026-10-28

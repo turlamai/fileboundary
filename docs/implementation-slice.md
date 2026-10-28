@@ -24,7 +24,7 @@ Exactly one JSON envelope on stdout; process exit code: 0 complete, 1 partial, 2
 - The output contains filename/size/hash/signature but not full source paths or file contents. Filenames and hashes can themselves be sensitive; keep all CLI output local and out of the repository.
 - The scanner excludes file/directory links by type, catches unreadable entries, reports counts, enforces a 1000-file default and configurable 1–100000 limit. This is **not** a hardened forensic snapshot against races from concurrent filesystem mutation, nor a replacement for VSS.
 - No output manifest is persisted in this initial slice. `.fbmanifest.json` is reserved for a later opt-in output implementation that enforces output location separation.
-- No kernel driver, user-mode hook, process impersonation or key extraction is present in this slice. That is a statement about this slice, not a project boundary: later slices may add adversarial capabilities under [ADR-0005](decisions/ADR-0005-adversarial-recovery-mandate.md) and [adversarial-research.md](adversarial-research.md).
+- No kernel driver, user-mode hook, process impersonation or key extraction is present in this slice. That is a statement about this slice, not a project boundary: later slices may add adversarial capabilities under [ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md) and [adversarial-research.md](adversarial-research.md).
 
 ## Follow-up work
 
