@@ -30,10 +30,22 @@
      (values "zip-header" "unknown" "measured")]
     [else (values "unknown" "unknown" "measured")]))
 
+;; A final regular file may still be reached through a linked parent.
+;; Inspect every existing path component without resolving the link target.
+;; This is a best-effort path check, not an atomic handle-level guarantee.
+(define (linked-path-component? source)
+  (let loop ([candidate (path->complete-path source)])
+    (if (memq (file-or-directory-type candidate #f) '(link directory-link))
+        #t
+        (let-values ([(parent _name _directory?) (split-path candidate)])
+          (and (path? parent) (loop parent))))))
+
 (define (inspect-file source)
+  (when (linked-path-component? source)
+    (error 'inspect-file "source path contains a filesystem link"))
   (unless (eq? (file-or-directory-type source #f) 'file)
     (error 'inspect-file "source must be an accessible regular file, not a link"))
-  ;; Reject path links before opening. This does not close path-swap races.\n  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
+  ;; Reject links in every path component. This does not close path-swap races.\n  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
   (call-with-input-file source
     (lambda (in)
       (define probe (read-bytes 4096 in))
@@ -52,11 +64,13 @@
     #:mode 'binary))
 
 (define (scan-tree source [max-files 1000])
+  (when (linked-path-component? source)
+    (error 'scan-tree "source path contains a filesystem link"))
   (unless (and (exact-integer? max-files) (<= 1 max-files 100000))
     (raise-argument-error 'scan-tree "integer from 1 through 100000" max-files))
   (unless (memq (file-or-directory-type source #f) '(file directory))
     (error 'scan-tree "source must be an accessible regular file or directory, not a link"))
-  ;; No-follow type checks keep leaf symlinks and linked directories out.\n  ;; Windows non-symlink reparse points require a separate OS-level check.\n  (define records '())
+  ;; Link-aware type checks keep leaf symlinks and linked directories out.\n  ;; Windows non-symlink reparse points require a separate OS-level check.\n  (define records '())
   (define skipped 0)
   (define truncated? #f)
   (define (walk path)
