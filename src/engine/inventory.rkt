@@ -31,9 +31,9 @@
     [else (values "unknown" "unknown" "measured")]))
 
 (define (inspect-file source)
-  (unless (eq? (file-or-directory-type source) 'file)
+  (unless (eq? (file-or-directory-type source #f) 'file)
     (error 'inspect-file "source must be an accessible regular file, not a link"))
-  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
+  ;; Reject path links before opening. This does not close path-swap races.\n  ;; Read only. Keep hashing streaming: no file->bytes on large documents.
   (call-with-input-file source
     (lambda (in)
       (define probe (read-bytes 4096 in))
@@ -54,16 +54,16 @@
 (define (scan-tree source [max-files 1000])
   (unless (and (exact-integer? max-files) (<= 1 max-files 100000))
     (raise-argument-error 'scan-tree "integer from 1 through 100000" max-files))
-  (unless (memq (file-or-directory-type source) '(file directory))
+  (unless (memq (file-or-directory-type source #f) '(file directory))
     (error 'scan-tree "source must be an accessible regular file or directory, not a link"))
-  (define records '())
+  ;; No-follow type checks keep leaf symlinks and linked directories out.\n  ;; Windows non-symlink reparse points require a separate OS-level check.\n  (define records '())
   (define skipped 0)
   (define truncated? #f)
   (define (walk path)
     (unless truncated?
       (with-handlers ([exn:fail? (lambda (_)
                                    (set! skipped (add1 skipped)))])
-        (case (file-or-directory-type path)
+        (case (file-or-directory-type path #f)
           [(directory)
            (for ([child (in-list (sort (directory-list path)
                                        string<?
