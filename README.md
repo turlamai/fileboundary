@@ -101,6 +101,7 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 | [Security](docs/security.md) | authorization basis, technique scope, fixed rules, integrity semantics, data safety |
 | [Adversarial research](docs/adversarial-research.md) | attack surface, research tracks, experiment protocol, priority |
 | [Recovery workflow](docs/recovery-workflow.md) | the six-stage recovery process and verdict rules |
+| [Vendor-authorized recovery](docs/authorized-recovery.md) | the vendor export channel and its verification workflow |
 | [CLI contract](docs/cli-contract.md) | versioned JSON envelope, commands, exit codes, versioning policy |
 | [Testing](docs/testing.md) | test layers, fixtures, red/green rules, CI gates |
 | [Development](docs/development.md) | environment, workflow, artifact hygiene |

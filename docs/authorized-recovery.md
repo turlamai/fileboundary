@@ -1,6 +1,6 @@
-# Authorized recovery of existing E-SafeNet files
+# Vendor-authorized recovery channel (E-SafeNet)
 
-**Status:** the authorized export **verification** code exists as a developer preview. **FileBoundary cannot produce plaintext from E-SafeNet ciphertext on its own.** The vendor's approved decryption/authorization is the missing prerequisite. No decrypted content is created, modified, copied, or transmitted by the `verify` command.
+**Status:** the authorized export **verification** code exists as a developer preview. **FileBoundary cannot produce plaintext from E-SafeNet ciphertext on its own yet.** The vendor's approved decryption/authorization is the **preferred first path** when it is available ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)); when it is not — the common case for the historical backlog — recovery continues through the adversarial tracks in [adversarial-research.md](adversarial-research.md) under the same evidence pipeline. No decrypted content is created, modified, copied, or transmitted by the `verify` command: it only compares evidence.
 
 ## Evidence and product identification
 
@@ -11,13 +11,13 @@ Vendor documentation describes CDG's configurable **document decryption/approval
 - Official product capability overview: https://www.esafenet.com/html/2025/11_0810/23.html
 - CDG product documentation and integration description: https://www.esafenet.com/html/2025/11_0810/22.html
 
-This project does **not** use unaudited third-party decryptors, attacks against the E-SafeNet key scheme, allowlist masquerading, driver changes, or decrypted-content extraction from protected processes. This limitation is deliberate and documented in `docs/security.md`.
+Decryptors of unverified third-party provenance are **never** used — anything that decrypts must be built and audited in this repository or run under direct operator control. The adversarial tracks named in [ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md) — key-scheme analysis, whitelist study and ride-along, driver-state experiments, extraction from protected processes — are **in scope**, but only through the gated, audited protocol in [security.md](security.md#technique-scope) and the experiment designs in [adversarial-research.md](adversarial-research.md). Ad-hoc runs outside that protocol are a process violation, not a shortcut.
 
 ## Operator workflow for a single file
 
 1. **Keep the encrypted original unchanged** and create a safe backup according to the organization's policy. Do not upload original documents or decrypted copies to issues or CI.
 2. Identify the E-SafeNet/CDG client version and whether the owner or administrator is **authorized to request document decryption**. Consult the deployed CDG administrator or the product's official support for the *document decryption workflow* or available supported integration API.
-3. Use that **approved, auditable** decryption/export method to create a separate file **outside this repository and outside the protected source tree**. FileBoundary must not launch a random whitelist program or alter security policies to produce it.
+3. Use that **approved, auditable** decryption/export method to create a separate file **outside this repository and outside the protected source tree**. While executing this vendor channel, FileBoundary does not launch arbitrary whitelist programs or alter security policies to produce the export — scripted automation of whitelisted applications is a separate research track (T1 in [adversarial-research.md](adversarial-research.md)) with its own evidence rules.
 4. Run the following read-only verification on the Windows machine with the Racket developer environment:
 
 ```powershell
@@ -41,7 +41,7 @@ The above 64-digit digest is an **illustrative placeholder**; substitute your ow
 | Exit | Condition | Meaning |
 | --- | --- | --- |
 | **1** / `partial` | Export exists; no explicit wrapper or trusted-hash mismatch detected | **Unverified**. The export is merely a candidate pending independent checks. |
-| **4** / `error` | Export is still recognized as E-SafeNet wrapped or differs from the trusted pre-encryption SHA-256 | **Failed** candidate; retry only via authorized exporter, never overwrite original. |
+| **4** / `error` | Export is still recognized as E-SafeNet wrapped or differs from the trusted pre-encryption SHA-256 | **Failed** candidate; retry via the vendor exporter, or escalate along the path ordering in [recovery-workflow.md](recovery-workflow.md); never overwrite the original. |
 | **2** / `error` | Arguments missing/malformed | Fix local invocation. |
 | **3** / `error` | Unreadable/missing input or other runtime failure | Fix local permissions/path or stop; source remains untouched. |
 
@@ -49,4 +49,4 @@ Do not assume successful PDF header detection means that the document has been d
 
 ## Missing capabilities
 
-To achieve end-to-end verified recovery for existing files, FileBoundary still needs a **supported vendor export adapter** (only with the deployed owner's authorization and official API documentation), independent full-format verification, manual or auditable independent-reader evidence, persistent per-file recovery manifests and Windows installer validation. These are separately tracked in Issue #5 and the recovery roadmap. Product success depends on obtaining **legitimate plaintext access**, not on inventing keys from the observed wrapper.
+To achieve end-to-end verified recovery for existing files, FileBoundary still needs a **supported vendor export adapter** (only with the deployed owner's authorization and official API documentation), independent full-format verification, manual or auditable independent-reader evidence, persistent per-file recovery manifests and Windows installer validation. These are separately tracked in Issue #5 and the recovery roadmap. Product success is defined by **verified recovery** ([security.md](security.md#integrity-semantics)): through this channel when the vendor grants it, through the adversarial tracks ([adversarial-research.md](adversarial-research.md)) when it does not — either way, only the evidence pipeline issues verdicts.

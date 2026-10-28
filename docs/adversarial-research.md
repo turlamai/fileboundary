@@ -17,7 +17,7 @@ Success is defined by the verification pipeline ([security.md](security.md#integ
 
 ## Measured facts so far
 
-From the committed real specimens ([ADR-0003](decisions/ADR-0003-real-encrypted-sample-exception.md), [ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)):
+From the recorded specimen measurements ([ADR-0003](decisions/ADR-0003-real-encrypted-sample-exception.md), [ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)). The in-tree fixture is the encrypted/plaintext DOCX twin pair pinned in `baseline.json` ([ADR-0004](decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)); the earlier personal PDF specimen was retired from the tracked tree per [ADR-0005](decisions/ADR-0005-personal-pdf-removed-from-head.md) (history purge pending in [#23](https://github.com/turinglambdaai/fileboundary/issues/23)) — its measurements below remain recorded evidence, and the file must not be re-fetched for builds.
 
 - **Wrapper signature (measured):** 8-byte magic prefix `62 14 23 65` plus ASCII markers `E-SafeNet` and `LOCK` within the first 4096 bytes; body entropy 7.9–8.0 bits/byte; no native format structures visible (`%PDF-`, `PK` absent).
 - **Type-portable wrapper (measured):** the same signature family wraps both a PDF and an OOXML docx; prefix bytes 4–7 differ per file (inferred: type/version/length metadata — unverified).
@@ -41,13 +41,13 @@ The single most strategy-deciding unknown: **are per-file keys stored in the fil
 
 ### T0 — Wrapper format analysis (offline, zero-risk, always available)
 
-Pure static analysis of committed specimens and newly minted twins. No interaction with the protection system; runs anywhere, on copies.
+Pure static analysis of the pinned twin pair, recorded specimen measurements, and newly minted twins. No interaction with the protection system; runs anywhere, on copies.
 
 - **Header field map:** parse the first kilobytes field-by-field across all samples — magic, bytes 4–7 semantics, fixed vs variable-length fields, offset where high entropy starts, trailer if any.
 - **Twin arithmetic:** ciphertext−plaintext length deltas across many twins immediately expose block size, padding scheme, and per-file header length.
 - **Algorithm identification:** alignment behavior, entropy profile, byte-distribution tests; candidate constructions (AES/SM4 in common modes, stream ciphers, XOR-PRNG schemes) tested against twins with key hypotheses derived from header bytes and machine fingerprint material — every candidate is verifiable, because we hold plaintext and ciphertext for the same content.
 - **Chosen-plaintext minting:** create twins with adversarial plaintext (all-zero blocks, counter patterns, single-byte deltas) through the whitelisted-app write path; diff ciphertexts to fingerprint the mode (ECB block reuse, CBC chaining, CTR keystream) and test key reuse across files.
-- **Output:** a header field map plus an algorithm hypothesis with a reproducible test against every committed fixture.
+- **Output:** a header field map plus an algorithm hypothesis with a reproducible test against every pinned fixture (`baseline.json`) and every minted twin.
 
 ### T1 — Whitelist mechanism study and ride-along (interactive; usually the first real win)
 
@@ -76,7 +76,7 @@ Pure static analysis of committed specimens and newly minted twins. No interacti
 ### T4 — Standalone decryptor (endgame)
 
 - Combine T0's format map with T2's key material into an offline decryptor: ciphertext + extracted key material → plaintext, no protection components involved at runtime.
-- **Validation bar:** byte-exact reconstruction of every committed fixture (the twin docx against its plaintext twin; the ADR-0003 PDF against its measured invariants; freshly minted twins of richer formats), then batch runs against the inventory manifest with the full verification pipeline.
+- **Validation bar:** byte-exact reconstruction of the in-tree twin pair (the wrapped docx against its plaintext twin), then freshly minted twins of richer formats (including PDF) validated the same way before batch runs against the inventory manifest with the full verification pipeline. The retired PDF's recorded invariants ([ADR-0003](decisions/ADR-0003-real-encrypted-sample-exception.md)) serve as historical cross-checks, not as an in-tree fixture.
 - If keys turn out to be service-wrapped per file, T4 absorbs T2 as a runtime dependency (extract-then-decrypt per batch) instead of failing.
 
 ## Experiment protocol

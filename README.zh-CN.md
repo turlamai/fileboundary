@@ -101,6 +101,7 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 | [安全模型](docs/security.md) | 授权基础、技术范围、固定规则、完整性语义、数据安全 |
 | [对抗研究纲领](docs/adversarial-research.md) | 攻击面、研究线、实验协议、优先级 |
 | [恢复流程](docs/recovery-workflow.md) | 六阶段恢复流程与判定规则 |
+| [厂商授权恢复渠道](docs/authorized-recovery.md) | 厂商导出渠道与其验证流程 |
 | [CLI 契约](docs/cli-contract.md) | 版本化 JSON envelope、命令、退出码、版本策略 |
 | [测试](docs/testing.md) | 测试分层、fixtures、红绿规则、CI 门禁 |
 | [开发](docs/development.md) | 环境、工作流、产物卫生 |
