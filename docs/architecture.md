@@ -12,12 +12,12 @@ Third-party transparent file encryption on Windows typically combines:
 - a **key management service** holding per-file or per-policy keys;
 - transparent encryption on write and decryption on read for whitelisted processes.
 
-FileBoundary does not modify any of these components. It observes them, measures the file corpus, drives authorized recovery, and verifies outcomes.
+FileBoundary first observes and measures these components. Under the adversarial mandate ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)) it also probes and — in gated, audit-logged experiments ([security.md](security.md#technique-scope)) — modifies them, and drives recovery through whichever path proves effective. Outcomes are always verified.
 
 ## Principles
 
 1. **One engine, two front ends.** All domain logic lives in the engine; the CLI and GUI are thin adapters over it.
-2. **Diagnostics observe; they do not modify.** No diagnostic unloads, patches, or reconfigures protection components.
+2. **Diagnostics default to observation.** Enumeration never mutates protection components. Deliberate state-mutating experiments are a separate, gated, audit-logged activity ([security.md](security.md#technique-scope)) — never an incidental side effect of a diagnostic command.
 3. **Evidence over assumption.** Every reported fact carries its evidence class: measured, heuristic, or inferred. Nothing heuristic is ever reported as fact.
 4. **Local-first.** No telemetry, no network calls, no accounts. All artifacts stay on the machine, outside this repository.
 5. **Agent parity.** Anything the GUI can do, the CLI can do, with the same JSON contract ([cli-contract.md](cli-contract.md)).
@@ -29,7 +29,7 @@ FileBoundary does not modify any of these components. It observes them, measures
 | `engine.core` | domain models, scan orchestration, manifest/state store, reporting primitives | — |
 | `engine.diagnostics` | minifilter inventory, driver/service inspection, process module enumeration, hook heuristics, probe-file I/O observation | `engine.core` |
 | `engine.inventory` | filesystem walk, format sniffing, entropy/structure classification, SHA-256, persistent manifest | `engine.core` |
-| `engine.recovery` | authorized recovery adapters, verification pipeline, audit log | `engine.core` |
+| `engine.recovery` | recovery adapters (sanctioned and adversarial paths), verification pipeline, audit log | `engine.core` |
 | `cli` | argument parsing, JSON envelope, exit codes; no domain logic | `engine.*`, `contracts` |
 | `gui` | native Windows presentation; no domain logic | `engine.*` (typed boundary) |
 | `contracts` | versioned JSON schemas shared by CLI, GUI, tests, and agents | — |
@@ -66,7 +66,7 @@ Every check that requires elevation reports `requiresElevation` in the JSON repo
 
 ## Recovery module — planned, [#5](https://github.com/turinglambdaai/fileboundary/issues/5)
 
-- **Authorized adapters only** — vendor management console, export paths through whitelisted applications, or owner-held keys. There is no fallback to unauthorized mechanisms, ever ([security.md](security.md)).
+- **Multi-path recovery adapters** — sanctioned channels when they exist (vendor console, whitelisted-application export, owner-held keys); adversarial paths validated by the research program (whitelist ride-along, extracted-key decryption, standalone decryptor) ([adversarial-research.md](adversarial-research.md)). Every path feeds the same verification pipeline ([security.md](security.md)).
 - **Verification pipeline** — hash comparison (fixture round-trip where possible), format validation, independent-reader open test, content-level checks. All three verdicts (`verified`, `unverified`, `failed`) require recorded evidence ([security.md](security.md#integrity-semantics)).
 - **Audit log** — append-only JSONL (`.fbaudit.jsonl`), one record per attempt with evidence references.
 
@@ -106,4 +106,4 @@ The original C#/WinForms v0.1 source is a reference prototype, **not** the selec
 - A diagnostic that cannot run says so explicitly (`requiresElevation`, `accessDenied`) — never silently empty.
 - A classification always carries its evidence class.
 - A recovery attempt always ends in an audit record, regardless of outcome.
-- An unrecoverable file is documented and closed as unrecoverable via authorized paths — it is never silently dropped.
+- An unrecoverable file is documented and closed as unrecoverable only after all currently known recovery paths are exhausted — it is never silently dropped.
