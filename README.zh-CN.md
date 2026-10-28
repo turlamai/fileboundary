@@ -34,6 +34,8 @@ racket src/cli.rkt update now
 
 每条命令向标准输出写一个版本化 JSON envelope（[契约](docs/cli-contract.md)）；机器可读输出即规范接口。
 
+扫描器会拒绝符号链接形式的扫描根路径，跳过目录中的文件/目录符号链接，并将跳过情况报告为 `partial`。这只是路径级防护，**尚不能**保证覆盖所有 Windows 重解析点或并发替换链接的竞态；后续由 [#10](https://github.com/turinglambdaai/fileboundary/issues/10) 跟进。
+
 ### 授权导出验证（只读预览）
 
 必须先经原加密系统**批准的正规解密/导出流程**取得另一份候选文件，再执行：
