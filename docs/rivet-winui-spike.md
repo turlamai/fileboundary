@@ -2,7 +2,7 @@
 
 **Status:** experimental CI validation; not shipped FileBoundary GUI.
 
-Tracks [#13](https://github.com/turinglambdaai/fileboundary/issues/13) and proposed [ADR-0002](decisions/adr-0002-prototype-stack.md).
+Tracks [#13](https://github.com/turlamai/fileboundary/issues/13) and proposed [ADR-0002](decisions/adr-0002-prototype-stack.md).
 
 ## Goal
 
