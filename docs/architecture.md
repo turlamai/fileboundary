@@ -1,6 +1,6 @@
 # Architecture
 
-Normative for module boundaries and classification semantics. The concrete technology stack is deferred to ADR-0002 (see [Decisions](decisions/)) and lands with the prototype review ([#1](https://github.com/turinglambdaai/fileboundary/issues/1), [#2](https://github.com/turinglambdaai/fileboundary/issues/2)).
+Normative for module boundaries and classification semantics. The concrete technology stack is deferred to ADR-0002 (see [Decisions](decisions/)) and lands with the prototype review ([#1](https://github.com/turlamai/fileboundary/issues/1), [#2](https://github.com/turlamai/fileboundary/issues/2)).
 
 ## Context
 
@@ -36,7 +36,7 @@ FileBoundary first observes and measures these components. Under the adversarial
 
 Dependency rule: dependencies point downward only. `contracts` depends on nothing. The GUI and CLI never import each other. Engine modules never import a front end. Violations of this rule are review blockers.
 
-## Diagnostics module — planned, [#3](https://github.com/turinglambdaai/fileboundary/issues/3)
+## Diagnostics module — planned, [#3](https://github.com/turlamai/fileboundary/issues/3)
 
 What it enumerates, and how it stays read-only:
 
@@ -48,7 +48,7 @@ What it enumerates, and how it stays read-only:
 
 Every check that requires elevation reports `requiresElevation` in the JSON report instead of failing silently or skipping quietly.
 
-## Inventory module — planned, [#4](https://github.com/turinglambdaai/fileboundary/issues/4)
+## Inventory module — planned, [#4](https://github.com/turlamai/fileboundary/issues/4)
 
 - **Resumable scan** — walk is persisted; an interrupted scan resumes without rehashing.
 - **Format sniffing** — magic bytes plus structural validation of the container/document format. Header recognition alone never proves plaintext (see below).
@@ -64,7 +64,7 @@ Every check that requires elevation reports `requiresElevation` in the JSON repo
 - **SHA-256** for every scanned file; the manifest records path, size, timestamps, hash, label, evidence.
 - **Manifest persistence** — `.fbmanifest.json` (reserved extension, see [cli-contract.md](cli-contract.md)), written only to operator-designated output locations.
 
-## Recovery module — planned, [#5](https://github.com/turinglambdaai/fileboundary/issues/5)
+## Recovery module — planned, [#5](https://github.com/turlamai/fileboundary/issues/5)
 
 - **Multi-path recovery adapters** — sanctioned channels when they exist (vendor console, whitelisted-application export, owner-held keys); adversarial paths validated by the research program (whitelist ride-along, extracted-key decryption, standalone decryptor) ([adversarial-research.md](adversarial-research.md)). Every path feeds the same verification pipeline ([security.md](security.md)).
 - **Verification pipeline** — hash comparison (fixture round-trip where possible), format validation, independent-reader open test, content-level checks. All three verdicts (`verified`, `unverified`, `failed`) require recorded evidence ([security.md](security.md#integrity-semantics)).
@@ -95,7 +95,7 @@ All outputs are written to operator-designated locations outside the repository.
 
 ## Technology posture
 
-**Owner preference: Racket-first.** A headless Racket engine and JSON CLI are the initial candidates; [Rivet](https://github.com/turinglambdaai/rivet) with a first-party Windows WinUI 3 host is the preferred GUI spike, while [Glaze](https://github.com/turinglambdaai/glaze) with a Windows WebView2 host is an explicitly supported fallback to evaluate. Product functionality must not depend on UI framework availability.
+**Owner preference: Racket-first.** A headless Racket engine and JSON CLI are the initial candidates; [Rivet](https://github.com/turlamai/rivet) with a first-party Windows WinUI 3 host is the preferred GUI spike, while [Glaze](https://github.com/turlamai/glaze) with a Windows WebView2 host is an explicitly supported fallback to evaluate. Product functionality must not depend on UI framework availability.
 
 Use Racket FFI or fixed bounded read-only diagnostics for Windows integration where reliable; isolate necessary Win32/COM functionality into narrow native user-mode modules when the real API/ABI warrants it. Do not introduce a kernel driver merely to read the filter stack.
 
