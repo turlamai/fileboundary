@@ -6,7 +6,8 @@
          racket/list
          racket/path)
 
-(provide inspect-file scan-tree classify-header)
+(provide inspect-file scan-tree classify-header
+         exn:fail:unsafe-scan-path?)
 
 (define (starts-with-bytes? input prefix)
   (and (>= (bytes-length input) (bytes-length prefix))
@@ -30,6 +31,16 @@
      (values "zip-header" "unknown" "measured")]
     [else (values "unknown" "unknown" "measured")]))
 
+;; A dedicated exception lets the CLI report unsafe paths without
+;; echoing user-supplied paths or conflating them with missing files.
+(struct exn:fail:unsafe-scan-path exn:fail () #:transparent)
+
+(define (reject-linked-path who)
+  (raise
+   (exn:fail:unsafe-scan-path
+    (format "~a: source path contains a filesystem link" who)
+    (current-continuation-marks))))
+
 ;; A final regular file may still be reached through a linked parent.
 ;; Inspect every existing path component without resolving the link target.
 ;; This is a best-effort path check, not an atomic handle-level guarantee.
@@ -42,7 +53,7 @@
 
 (define (inspect-file source)
   (when (linked-path-component? source)
-    (error 'inspect-file "source path contains a filesystem link"))
+    (reject-linked-path 'inspect-file))
   (unless (eq? (file-or-directory-type source #f) 'file)
     (error 'inspect-file "source must be an accessible regular file, not a link"))
   ;; Reject links in every path component. This does not close path-swap races.
@@ -66,7 +77,7 @@
 
 (define (scan-tree source [max-files 1000])
   (when (linked-path-component? source)
-    (error 'scan-tree "source path contains a filesystem link"))
+    (reject-linked-path 'scan-tree))
   (unless (and (exact-integer? max-files) (<= 1 max-files 100000))
     (raise-argument-error 'scan-tree "integer from 1 through 100000" max-files))
   (unless (memq (file-or-directory-type source #f) '(file directory))
