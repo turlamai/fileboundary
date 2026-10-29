@@ -137,5 +137,25 @@
                                  "--exported" (path->string exported)
                                  "--trusted-plaintext-sha256" "bad"))])
        (check-equal? code 2)
-       (check-equal? (hash-ref response 'status) "error"))))
+       (check-equal? (hash-ref response 'status) "error"))
+     ;; Verification inherits the same no-follow guard for both input files.
+     (let ([linked-original (build-path export-dir "linked-original.pdf")])
+       (dynamic-wind
+        void
+        (lambda ()
+          (make-file-or-directory-link original linked-original)
+          (let-values ([(code response)
+                        (invoke (list "verify" "--original"
+                                      (path->string linked-original)
+                                      "--exported" (path->string exported)))])
+            (check-equal? code 3)
+            (check-equal? (hash-ref response 'status) "error")
+            (check-equal? (hash-ref (car (hash-ref response 'errors)) 'code)
+                          "unsafeScanPath")
+            (check-false
+             (regexp-match? (regexp (regexp-quote (path->string original)))
+                            (jsexpr->string response)))))
+        (lambda ()
+          (when (link-exists? linked-original)
+            (delete-file linked-original)))))))
  (lambda () (delete-directory/files export-dir)))
