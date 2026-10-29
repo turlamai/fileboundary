@@ -30,7 +30,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          raco pkg install --auto --no-docs 'https://github.com/turinglambdaai/rivet.git#v0.13.0'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
           if ($LASTEXITCODE -ne 0) { throw "Rivet install failed" }
       - name: Generate disposable native Windows app
         shell: pwsh
