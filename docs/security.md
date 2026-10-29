@@ -75,7 +75,7 @@ All of the following, recorded as evidence in the audit log:
 
 ## Read-only scan scope limitation
 
-The inventory preview uses no-follow path-type checks to reject symbolic-link source paths and skip linked directory entries. Skipped entries are reported as degraded results, not silently included. Explicit linked `scan` and `verify` inputs return a sanitized `unsafeScanPath` error with no original path or target echoed in JSON; this is distinct from generic filesystem failures. This is **not** a race-free guarantee: a path may change between inspection and opening, and Windows reparse-point variants beyond recognized symlinks still need handle-level validation. Do not scan untrusted, concurrently mutable trees as if this were a security boundary; see [#10](https://github.com/turinglambdaai/fileboundary/issues/10). The scanner does not modify protection software, whitelist configuration, or keys.
+The inventory preview uses no-follow path-type checks to reject symbolic-link source paths and skip linked directory entries. Skipped entries are reported as degraded results, not silently included. Explicit linked `scan` and `verify` inputs return a sanitized `unsafeScanPath` error with no original path or target echoed in JSON; this is distinct from generic filesystem failures. This is **not** a race-free guarantee: a path may change between inspection and opening, and Windows reparse-point variants beyond recognized symlinks still need handle-level validation. Do not scan untrusted, concurrently mutable trees as if this were a security boundary; see [#10](https://github.com/turlamai/fileboundary/issues/10). The scanner does not modify protection software, whitelist configuration, or keys.
 
 ## Elevation and degradation
 
