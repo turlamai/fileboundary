@@ -9,7 +9,7 @@
 
 The owner built a controlled pair on the operator machine — the same logical content (`123 abc`) saved twice, once through the transparent-encryption mechanism and once as plaintext — and asked for (1) the pair to be committed and (2) the ADR-0003 specimen (a 25.3 MB personal-ciphertext PDF) to be removed from the repository.
 
-While that instruction was being executed, `main` gained six commits of active development ([#14](https://github.com/turinglambdaai/fileboundary/issues/14)–[#19](https://github.com/turinglambdaai/fileboundary/issues/19)), including `tests/real-wrapper-baseline-test.rkt` (#18), which asserts the PDF specimen's size, SHA-256, wrapper signature, and classification against `baseline.json`; a draft PR (#20) and two feature branches now build on that history. An immediate history rewrite would break the regression test, invalidate the draft PR and both branches, and desync the other contributor's clone.
+While that instruction was being executed, `main` gained six commits of active development ([#14](https://github.com/turlamai/fileboundary/issues/14)–[#19](https://github.com/turlamai/fileboundary/issues/19)), including `tests/real-wrapper-baseline-test.rkt` (#18), which asserts the PDF specimen's size, SHA-256, wrapper signature, and classification against `baseline.json`; a draft PR (#20) and two feature branches now build on that history. An immediate history rewrite would break the regression test, invalidate the draft PR and both branches, and desync the other contributor's clone.
 
 Measured evidence for the pair (pinned in `tests/fixtures/real-samples/baseline-twins.json`):
 
