@@ -75,7 +75,8 @@
      #:mode 'binary #:exists 'error)
    (make-file-or-directory-link external leaf-link)
    (check-equal? (file-or-directory-type leaf-link #f) 'link)
-   (check-exn exn:fail? (lambda () (inspect-file leaf-link)))
+   (check-exn exn:fail:unsafe-scan-path?
+              (lambda () (inspect-file leaf-link)))
    (let-values ([(files skipped truncated?) (scan-tree link-root 10)])
      (check-equal? files '())
      (check-equal? skipped 1)
@@ -83,10 +84,10 @@
    ;; The final component is a regular file, but an ancestor is a link.
    ;; Previously the path type check examined only the final component.
    (make-file-or-directory-link (path->directory-path external-root) directory-link)
-   (check-exn exn:fail?
+   (check-exn exn:fail:unsafe-scan-path?
               (lambda () (inspect-file
                           (build-path directory-link "private-synthetic.bin"))))
-   (check-exn exn:fail?
+   (check-exn exn:fail:unsafe-scan-path?
               (lambda () (scan-tree
                           (build-path directory-link "private-synthetic.bin")))))
  (lambda ()
