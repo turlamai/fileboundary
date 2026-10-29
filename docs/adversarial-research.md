@@ -25,6 +25,30 @@ From the recorded specimen measurements ([ADR-0003](decisions/ADR-0003-real-encr
 - **Known-plaintext oracle in hand (measured):** we hold a plaintext/ciphertext twin pair (same logical content, one written through the transparent-encryption path, one as plaintext), and we can mint additional twins on the operator machine at will — a chosen-plaintext setup against the real system.
 - **Protection stack shape (measured at genre level, per-component identification pending):** minifilter + user-process DLL injection/API hooks + process whitelist + key management service ([architecture.md](architecture.md#context)). `doctor` today covers only bounded Filter Manager enumeration; service, module and hook inventory is still [#3](https://github.com/turinglambdaai/fileboundary/issues/3) work.
 
+## Measured results — T0 (2026-10-28, offline)
+
+The wrapper is **broken at the format layer**; full findings and the
+field-completion protocol live in [../research/t0/FIELD_PROTOCOL.md](../research/t0/FIELD_PROTOCOL.md).
+Headlines (all measured on the committed twin + the retired PDF specimen):
+
+- Cipher: XOR with a **512-byte repeating pad keyed by absolute file
+  offset**, shared policy-wide across files — no per-file key exists at
+  this layer.
+- Header fields 4–5/6–7 size the wrapper's metadata zone (zone + tail = 512
+  across all three specimens: docx 444+68, PDF 155+357, OS3 2013 112+400).
+- The body is a rebuilt zip: first local header stripped (CD lho=0), its
+  content relocated into the wrapper's metadata zone as a raw-deflate blob;
+  everything else intact.
+- Entry payloads are deflate **with a preset dictionary** — a fixed
+  constant inside the client driver; small entries that avoid dictionary
+  references decrypt outright (one entry already VERIFIED offline with the
+  pad at 421/512 proven columns).
+- Consequence: strategy decision S1/S4 resolved — the backlog is
+  offline-decryptable once the pad is completed (minutes, from minted
+  twins on the operator machine) and the driver's dictionary blob is
+  extracted (T2-lite). T1 ride-along remains the fastest first-recovery
+  path and also produces the known-plaintext pairs.
+
 ## Attack surface
 
 | # | Surface | Question it answers |
