@@ -46,7 +46,7 @@ FileBoundary 是 Windows 透明文件加密的**对抗恢复研究**项目：机
   唯一现行例外：`tests/fixtures/real-samples/` 下按 SHA-256 固定的同内容明文/密文 DOCX 对照样本
   （[ADR-0004](docs/decisions/ADR-0004-real-sample-twin-pair-and-deferred-removal.md)）。
   早期个人 PDF 样本已从当前源码树移除（[ADR-0005](docs/decisions/ADR-0005-personal-pdf-removed-from-head.md)），
-  历史 Git 对象清理仍由 [Issue #23](https://github.com/turinglambdaai/fileboundary/issues/23) 跟进。
+  历史 Git 对象清理仍由 [Issue #23](https://github.com/turlamai/fileboundary/issues/23) 跟进。
 - 禁止伪造测试结果：本地跑绿必须在 CI 复现；flaky 测试开 issue 隔离，
   不得静默跳过；`continue-on-error`、空测试、跳过断言不构成通过证据。
 - CI 建立前（Issue #6 之前），PR 描述必须贴出本地完整测试命令与输出。
