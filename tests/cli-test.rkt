@@ -76,7 +76,13 @@
         (check-false (regexp-match? #rx"external-synthetic-secret" (jsexpr->string result))))
       (let-values ([(code result) (invoke (list "scan" (path->string link)))])
         (check-equal? code 3)
-        (check-equal? (hash-ref result 'status) "error"))
+        (check-equal? (hash-ref result 'status) "error")
+        (check-equal? (hash-ref (car (hash-ref result 'errors)) 'code)
+                      "unsafeScanPath")
+        (check-false (regexp-match? #rx"external-synthetic-secret"
+                                    (jsexpr->string result)))
+        (check-false (regexp-match? (regexp (regexp-quote (path->string outside)))
+                                    (jsexpr->string result))))
       ;; A regular leaf under a linked parent must also be rejected.
       (make-file-or-directory-link (path->directory-path (path-only outside))
                                    parent-link)
@@ -85,7 +91,9 @@
                                           (build-path parent-link
                                                       (file-name-from-path outside)))))])
         (check-equal? code 3)
-        (check-equal? (hash-ref result 'status) "error")))
+        (check-equal? (hash-ref result 'status) "error")
+        (check-equal? (hash-ref (car (hash-ref result 'errors)) 'code)
+                      "unsafeScanPath")))
     (lambda ()
       (when (link-exists? parent-link)
         (if (eq? (system-type 'os) 'windows)
