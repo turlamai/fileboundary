@@ -320,7 +320,14 @@
   (define started (current-inexact-milliseconds))
   (define command (if (null? args) "help" (car args)))
   (define-values (code status data warnings errors)
-    (with-handlers ([exn:fail?
+    (with-handlers ([exn:fail:unsafe-scan-path?
+                     (lambda (_)
+                       ;; A linked path is a scope refusal, not a generic I/O error.
+                       ;; Never echo the supplied path or link target to stdout.
+                       (values 3 "error" (hash) '()
+                               (list (coded "unsafeScanPath"
+                                            "Input path contains a filesystem link; operation refused."))))]
+                    [exn:fail?
                      (lambda (_)
                        ;; Do not leak private paths or OS details to stdout.
                        (values 3 "error" (hash) '()
