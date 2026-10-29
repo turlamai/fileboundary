@@ -2,7 +2,7 @@
 
 FileBoundary remains a private, unlicensed internal project. This file records the
 license applicable to the **Rivet Windows host source** incorporated under
-`windows/` from [turinglambdaai/rivet v0.13.0](https://github.com/turinglambdaai/rivet/tree/v0.13.0/platform/windows/host).
+`windows/` from [turlamai/rivet v0.13.0](https://github.com/turlamai/rivet/tree/v0.13.0/platform/windows/host).
 This notice does **not** grant a license to FileBoundary's own source code.
 
 ## Rivet — MIT License
