@@ -2,14 +2,14 @@
 
 **Status:** development preview; Windows build and package must pass the [GUI CI workflow](../.github/workflows/windows-gui.yml) before merging. This is not a production release or a recovery tool.
 
-The [Rivet v0.13.0](https://github.com/turinglambdaai/rivet/releases/tag/v0.13.0) Windows host is checked into `windows/` and owned UI code uses XAML/C++/WinRT. Racket code in `app/backend.rkt` connects the typed Rivet RPC layer to `src/engine/summary.rkt`, which reuses the **same** read-only scanner and bounded diagnostic code as the CLI. The CLI does not depend on Rivet or WinUI.
+The [Rivet v0.13.0](https://github.com/turlamai/rivet/releases/tag/v0.13.0) Windows host is checked into `windows/` and owned UI code uses XAML/C++/WinRT. Racket code in `app/backend.rkt` connects the typed Rivet RPC layer to `src/engine/summary.rkt`, which reuses the **same** read-only scanner and bounded diagnostic code as the CLI. The CLI does not depend on Rivet or WinUI.
 
 ## Windows development
 
 Install Racket CS 9.3, Visual Studio 2022 C++ desktop tools, Windows SDK, and the pinned Rivet release:
 
 ```powershell
-raco pkg install --auto --no-docs 'https://github.com/turinglambdaai/rivet.git#v0.13.0'
+raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
 raco rivet inspect --json
 raco rivet doctor --json
 raco rivet schema check rivet-schema.json --json
