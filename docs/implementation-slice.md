@@ -1,6 +1,6 @@
 # First Racket vertical slice — code and evidence boundaries
 
-**Status: implementation submitted for Windows CI; not a release.** Tracks [#4](https://github.com/turinglambdaai/fileboundary/issues/4), [#7](https://github.com/turinglambdaai/fileboundary/issues/7), [#13](https://github.com/turinglambdaai/fileboundary/issues/13).
+**Status: implementation submitted for Windows CI; not a release.** Tracks [#4](https://github.com/turlamai/fileboundary/issues/4), [#7](https://github.com/turlamai/fileboundary/issues/7), [#13](https://github.com/turlamai/fileboundary/issues/13).
 
 ## Executable commands
 
