@@ -1,6 +1,6 @@
 # v0.1 prototype review — 2026-10-27
 
-**Status: reviewed locally, not imported or built.** This is evidence for [#1](https://github.com/turinglambdaai/fileboundary/issues/1), not an acceptance or release report. The ZIP is a prior conversation artifact named `FileBoundary-v0.1-source.zip`; do not commit sample encrypted documents, machine reports or user data. Its Windows behavior has **not** been executed or verified in this review environment.
+**Status: reviewed locally, not imported or built.** This is evidence for [#1](https://github.com/turlamai/fileboundary/issues/1), not an acceptance or release report. The ZIP is a prior conversation artifact named `FileBoundary-v0.1-source.zip`; do not commit sample encrypted documents, machine reports or user data. Its Windows behavior has **not** been executed or verified in this review environment.
 
 ## Source provenance and inventory
 

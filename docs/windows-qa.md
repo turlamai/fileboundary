@@ -4,8 +4,8 @@
 
 ## Download and launch
 
-1. Sign in to GitHub with access to `turinglambdaai/fileboundary`.
-2. Open [FileBoundary native Windows GUI workflow](https://github.com/turinglambdaai/fileboundary/actions/workflows/windows-gui.yml).
+1. Sign in to GitHub with access to `turlamai/fileboundary`.
+2. Open [FileBoundary native Windows GUI workflow](https://github.com/turlamai/fileboundary/actions/workflows/windows-gui.yml).
 3. Select the latest **successful `main` run**, and download the artifact named `FileBoundary-Windows-x64-dev` from its **Artifacts** section. A feature-branch run is only for PR review.
 4. Unpack **the entire ZIP** to a local folder such as `D:\Tools\FileBoundary`. Keep `runtime/`, `res/`, DLLs and `RivetHost.exe` together; do not run the executable from inside a ZIP viewer.
 5. Start `RivetHost.exe`. This is an unsigned, portable *development* package; it is not an installer or production release. If Windows blocks execution, check the actual warning, file provenance and your local software policy; do **not** disable Windows security software or enterprise controls.

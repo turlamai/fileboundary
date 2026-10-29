@@ -2,15 +2,15 @@
 
 - **Status:** Proposed — **Racket-first is the owner's explicit preference; framework selection is not yet accepted**
 - **Date:** 2026-10-27
-- **Related:** [#1](https://github.com/turinglambdaai/fileboundary/issues/1), [#2](https://github.com/turinglambdaai/fileboundary/issues/2), [prototype review](../prototype-review.md)
+- **Related:** [#1](https://github.com/turlamai/fileboundary/issues/1), [#2](https://github.com/turlamai/fileboundary/issues/2), [prototype review](../prototype-review.md)
 
 ## Context and owner preference
 
 The observed FileBoundary v0.1 prototype is one C# / WinForms file, dual-compiled into a GUI and CLI via a `CLI` flag. It uses .NET Framework 4.x compiler paths, WinForms, cryptography and process APIs. This is **prototype provenance**, not a mandate to stay with C#.
 
 The owner's desired implementation prioritizes **Racket**, preferably the existing first-party desktop family:
-- [Rivet](https://github.com/turinglambdaai/rivet): Racket backend and a native Windows **WinUI 3** front end with typed RPC.
-- [Glaze](https://github.com/turinglambdaai/glaze): Racket backend, Windows **WebView2** interface, typed API bridge and scoped capabilities.
+- [Rivet](https://github.com/turlamai/rivet): Racket backend and a native Windows **WinUI 3** front end with typed RPC.
+- [Glaze](https://github.com/turlamai/glaze): Racket backend, Windows **WebView2** interface, typed API bridge and scoped capabilities.
 
 The product is Windows-only, local-first, agent-native, read-only by default and intended for personal internal use; **no product website** is required. The owner is willing to use a second language where real platform constraints justify it, and favors extracting reusable Racket libraries for possible Racket Package Catalog submission.
 

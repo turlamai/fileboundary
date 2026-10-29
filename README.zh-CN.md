@@ -6,7 +6,7 @@
 
 ## 状态
 
-**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。此分支新增 **Rivet/WinUI 3 原生 GUI 源码预览**，提供只读批量扫描摘要和过滤驱动诊断。是否能构建和打包以 [Windows GUI CI](.github/workflows/windows-gui.yml) 的实际结果为准。完整系统诊断、持久化清单、**独立完整的恢复验收**和实际的厂商授权明文导出**尚未实现**；当前只提供基础的只读导出对比。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)）。
+**Racket 核心开发预览，尚非完整产品。** 本分支新增 `src/engine/inventory.rkt` 与 `src/cli.rkt`，实现只读文件检查、有限数量扫描和版本化 JSON 输出。Windows 编译及测试是否通过，以 [实际工作流](.github/workflows/windows-core.yml) 为准。此分支新增 **Rivet/WinUI 3 原生 GUI 源码预览**，提供只读批量扫描摘要和过滤驱动诊断。是否能构建和打包以 [Windows GUI CI](.github/workflows/windows-gui.yml) 的实际结果为准。完整系统诊断、持久化清单、**独立完整的恢复验收**和实际的厂商授权明文导出**尚未实现**；当前只提供基础的只读导出对比。既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turlamai/fileboundary/issues/1)）。
 
 ### 无界面开发预览
 
@@ -57,14 +57,14 @@ FileBoundary 的目标是让这一局面变得可度量、可破解：所有者�
 
 规划范围——每项能力都通过对应 issue 落地：
 
-1. **分析加密机制** —— 枚举 minifilter、过滤驱动与服务配置、注入模块、hook 启发式检测，以及探针文件上的 I/O 行为（[#3](https://github.com/turinglambdaai/fileboundary/issues/3)）。
+1. **分析加密机制** —— 枚举 minifilter、过滤驱动与服务配置、注入模块、hook 启发式检测，以及探针文件上的 I/O 行为（[#3](https://github.com/turlamai/fileboundary/issues/3)）。
 2. **诊断** —— 输出机器可读的报告：当前过滤栈与各进程的读写行为。
-3. **盘点加密文件** —— 批量扫描磁盘，按加密可能性分类，记录文件状态、SHA-256 与格式信息（[#4](https://github.com/turinglambdaai/fileboundary/issues/4)）。
-4. **恢复——不设渠道限制** —— 有厂商授权渠道就走授权渠道；没有就走对抗路径：白名单伴随与伪装、从密钥管理服务/驱动/进程内存提取密钥、基于格式分析的独立解密（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
-5. **验证完整性** —— 恢复文件只有通过完整验证管线才可标记 `verified`；复制成功不等于解密成功（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)）。
+3. **盘点加密文件** —— 批量扫描磁盘，按加密可能性分类，记录文件状态、SHA-256 与格式信息（[#4](https://github.com/turlamai/fileboundary/issues/4)）。
+4. **恢复——不设渠道限制** —— 有厂商授权渠道就走授权渠道；没有就走对抗路径：白名单伴随与伪装、从密钥管理服务/驱动/进程内存提取密钥、基于格式分析的独立解密（[#5](https://github.com/turlamai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
+5. **验证完整性** —— 恢复文件只有通过完整验证管线才可标记 `verified`；复制成功不等于解密成功（[#5](https://github.com/turlamai/fileboundary/issues/5)）。
 6. **管理恢复流程** —— 基于 manifest 的选择、每次尝试的审计记录、恢复集合与 manifest 的对账（[docs/recovery-workflow.md](docs/recovery-workflow.md)）。
-7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turinglambdaai/fileboundary/issues/7)）。
-8. **工程严谨性** —— Windows CI、自动化测试与双语文档从第一天建立（[#6](https://github.com/turinglambdaai/fileboundary/issues/6)、[#8](https://github.com/turinglambdaai/fileboundary/issues/8)）。
+7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turlamai/fileboundary/issues/7)）。
+8. **工程严谨性** —— Windows CI、自动化测试与双语文档从第一天建立（[#6](https://github.com/turlamai/fileboundary/issues/6)、[#8](https://github.com/turlamai/fileboundary/issues/8)）。
 
 ## 研究纲领
 
@@ -113,15 +113,15 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 
 | 领域 | Issue | 状态 |
 |---|---|---|
-| 导入并审查 v0.1 原型 | [#1](https://github.com/turinglambdaai/fileboundary/issues/1) | 规划中 |
-| 模块化 Windows 应用架构 | [#2](https://github.com/turinglambdaai/fileboundary/issues/2) | 规划中 |
-| Windows 文件加密诊断 | [#3](https://github.com/turinglambdaai/fileboundary/issues/3) | 规划中 |
-| 加密文件盘点与分类 | [#4](https://github.com/turinglambdaai/fileboundary/issues/4) | 规划中 |
-| 文件恢复与验证 | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | 规划中 |
-| Windows CI 与自动化测试 | [#6](https://github.com/turinglambdaai/fileboundary/issues/6) | 规划中 |
-| 版本化 JSON CLI 契约 | [#7](https://github.com/turinglambdaai/fileboundary/issues/7) | 规划中 |
-| 双语文档 | [#8](https://github.com/turinglambdaai/fileboundary/issues/8) | 规划中 |
-| Windows 安装包与便携版发布 | [#9](https://github.com/turinglambdaai/fileboundary/issues/9) | 规划中 |
+| 导入并审查 v0.1 原型 | [#1](https://github.com/turlamai/fileboundary/issues/1) | 规划中 |
+| 模块化 Windows 应用架构 | [#2](https://github.com/turlamai/fileboundary/issues/2) | 规划中 |
+| Windows 文件加密诊断 | [#3](https://github.com/turlamai/fileboundary/issues/3) | 规划中 |
+| 加密文件盘点与分类 | [#4](https://github.com/turlamai/fileboundary/issues/4) | 规划中 |
+| 文件恢复与验证 | [#5](https://github.com/turlamai/fileboundary/issues/5) | 规划中 |
+| Windows CI 与自动化测试 | [#6](https://github.com/turlamai/fileboundary/issues/6) | 规划中 |
+| 版本化 JSON CLI 契约 | [#7](https://github.com/turlamai/fileboundary/issues/7) | 规划中 |
+| 双语文档 | [#8](https://github.com/turlamai/fileboundary/issues/8) | 规划中 |
+| Windows 安装包与便携版发布 | [#9](https://github.com/turlamai/fileboundary/issues/9) | 规划中 |
 
 ## 开发
 

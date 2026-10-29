@@ -6,7 +6,7 @@
 
 ## Status
 
-**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence, **full independent recovery verification**, and actual vendor-authorized plaintext export remain **not implemented**. Basic read-only export comparison is a preview feature. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turinglambdaai/fileboundary/issues/1)).
+**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence, **full independent recovery verification**, and actual vendor-authorized plaintext export remain **not implemented**. Basic read-only export comparison is a preview feature. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turlamai/fileboundary/issues/1)).
 
 ### Headless developer preview
 
@@ -57,14 +57,14 @@ FileBoundary exists to make this situation measurable and beatable: the owner st
 
 Planned scope — each capability lands through its tracked issue:
 
-1. **Analyze the encryption mechanism** — enumerate minifilters, filter-driver and service configuration, injected modules, hook heuristics, and file I/O behavior on probe files ([#3](https://github.com/turinglambdaai/fileboundary/issues/3)).
+1. **Analyze the encryption mechanism** — enumerate minifilters, filter-driver and service configuration, injected modules, hook heuristics, and file I/O behavior on probe files ([#3](https://github.com/turlamai/fileboundary/issues/3)).
 2. **Diagnose** — produce a machine-readable report of the active filter stack and per-process read/write behavior.
-3. **Inventory encrypted files** — batch-scan drives, classify files by encryption likelihood, record state, SHA-256 and format information ([#4](https://github.com/turinglambdaai/fileboundary/issues/4)).
-4. **Recover — by any effective path** — vendor-sanctioned export channels when available; otherwise the adversarial tracks: whitelist ride-along and impersonation, key extraction from the key management service, drivers or process memory, standalone decryption from format analysis ([#5](https://github.com/turinglambdaai/fileboundary/issues/5), [research program](docs/adversarial-research.md)).
-5. **Verify integrity** — a recovered file is `verified` only after the full verification pipeline; a successful copy is not a successful decryption ([#5](https://github.com/turinglambdaai/fileboundary/issues/5)).
+3. **Inventory encrypted files** — batch-scan drives, classify files by encryption likelihood, record state, SHA-256 and format information ([#4](https://github.com/turlamai/fileboundary/issues/4)).
+4. **Recover — by any effective path** — vendor-sanctioned export channels when available; otherwise the adversarial tracks: whitelist ride-along and impersonation, key extraction from the key management service, drivers or process memory, standalone decryption from format analysis ([#5](https://github.com/turlamai/fileboundary/issues/5), [research program](docs/adversarial-research.md)).
+5. **Verify integrity** — a recovered file is `verified` only after the full verification pipeline; a successful copy is not a successful decryption ([#5](https://github.com/turlamai/fileboundary/issues/5)).
 6. **Manage the recovery flow** — manifest-driven selection, per-attempt audit trail, reconciliation of recovered set against the manifest ([docs/recovery-workflow.md](docs/recovery-workflow.md)).
-7. **Two front ends** — a native Windows GUI and a CLI that speaks a versioned JSON contract for agents and automation ([#7](https://github.com/turinglambdaai/fileboundary/issues/7)).
-8. **Engineering rigor** — Windows CI, automated tests and bilingual documentation from day one ([#6](https://github.com/turinglambdaai/fileboundary/issues/6), [#8](https://github.com/turinglambdaai/fileboundary/issues/8)).
+7. **Two front ends** — a native Windows GUI and a CLI that speaks a versioned JSON contract for agents and automation ([#7](https://github.com/turlamai/fileboundary/issues/7)).
+8. **Engineering rigor** — Windows CI, automated tests and bilingual documentation from day one ([#6](https://github.com/turlamai/fileboundary/issues/6), [#8](https://github.com/turlamai/fileboundary/issues/8)).
 
 ## Research mandate
 
@@ -113,15 +113,15 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 
 | Area | Issue | Status |
 |---|---|---|
-| Import and review the v0.1 prototype | [#1](https://github.com/turinglambdaai/fileboundary/issues/1) | planned |
-| Modular Windows application architecture | [#2](https://github.com/turinglambdaai/fileboundary/issues/2) | planned |
-| Windows file encryption diagnostics | [#3](https://github.com/turinglambdaai/fileboundary/issues/3) | planned |
-| Encrypted file inventory and classification | [#4](https://github.com/turinglambdaai/fileboundary/issues/4) | planned |
-| File recovery and verification | [#5](https://github.com/turinglambdaai/fileboundary/issues/5) | planned |
-| Windows CI and automated tests | [#6](https://github.com/turinglambdaai/fileboundary/issues/6) | planned |
-| Versioned JSON CLI contract | [#7](https://github.com/turinglambdaai/fileboundary/issues/7) | planned |
-| Bilingual documentation | [#8](https://github.com/turinglambdaai/fileboundary/issues/8) | planned |
-| Windows installer and portable release | [#9](https://github.com/turinglambdaai/fileboundary/issues/9) | planned |
+| Import and review the v0.1 prototype | [#1](https://github.com/turlamai/fileboundary/issues/1) | planned |
+| Modular Windows application architecture | [#2](https://github.com/turlamai/fileboundary/issues/2) | planned |
+| Windows file encryption diagnostics | [#3](https://github.com/turlamai/fileboundary/issues/3) | planned |
+| Encrypted file inventory and classification | [#4](https://github.com/turlamai/fileboundary/issues/4) | planned |
+| File recovery and verification | [#5](https://github.com/turlamai/fileboundary/issues/5) | planned |
+| Windows CI and automated tests | [#6](https://github.com/turlamai/fileboundary/issues/6) | planned |
+| Versioned JSON CLI contract | [#7](https://github.com/turlamai/fileboundary/issues/7) | planned |
+| Bilingual documentation | [#8](https://github.com/turlamai/fileboundary/issues/8) | planned |
+| Windows installer and portable release | [#9](https://github.com/turlamai/fileboundary/issues/9) | planned |
 
 ## Development
 

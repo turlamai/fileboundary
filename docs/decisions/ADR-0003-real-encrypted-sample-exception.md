@@ -6,7 +6,7 @@
 
 ## Context
 
-The owner provided a real encrypted file ("说给对方听.pdf" from the operator machine's Downloads) to serve as a test specimen. Inspection (measured evidence): 26,516,346 bytes; SHA-256 `3d91c88f9d089d59e6e993849327b6ef97609fb200a7c7399e6f7b3b542338e1`; header magic `62 14 23 65 9b 00 65 01` with ASCII markers `E-SafeNet` and `LOCK` (a commercial transparent-encryption wrapper); no `%PDF-` markers anywhere; body entropy 7.997 bits/byte across three sample offsets. The file is genuine ciphertext of a personal document in a recognizable wrapper — exactly the real-world condition the inventory classifier ([#4](https://github.com/turinglambdaai/fileboundary/issues/4)) must handle.
+The owner provided a real encrypted file ("说给对方听.pdf" from the operator machine's Downloads) to serve as a test specimen. Inspection (measured evidence): 26,516,346 bytes; SHA-256 `3d91c88f9d089d59e6e993849327b6ef97609fb200a7c7399e6f7b3b542338e1`; header magic `62 14 23 65 9b 00 65 01` with ASCII markers `E-SafeNet` and `LOCK` (a commercial transparent-encryption wrapper); no `%PDF-` markers anywhere; body entropy 7.997 bits/byte across three sample offsets. The file is genuine ciphertext of a personal document in a recognizable wrapper — exactly the real-world condition the inventory classifier ([#4](https://github.com/turlamai/fileboundary/issues/4)) must handle.
 
 [ADR-0001](ADR-0001-project-scope-and-boundaries.md) and [`AGENTS.md`](../../AGENTS.md) prohibit committing real encrypted production files or personal data; [docs/testing.md](../testing.md) requires synthetic-only fixtures.
 

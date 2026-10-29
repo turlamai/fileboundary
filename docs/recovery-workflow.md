@@ -8,13 +8,13 @@ The recovery process has six stages. Each stage produces records; nothing advanc
 - Operator confirms they own the files and accepts the security model ([security.md](security.md)).
 - The tool records these preconditions in the audit log before any scan or recovery action.
 
-## Stage 1 — Assess (diagnostics, [#3](https://github.com/turinglambdaai/fileboundary/issues/3))
+## Stage 1 — Assess (diagnostics, [#3](https://github.com/turlamai/fileboundary/issues/3))
 
 Run the diagnostics module. Record: the minifilter stack (filters, altitudes, instances), filter-driver and service configuration, per-process module inventory, hook heuristic findings (labeled `heuristic`), and probe-file I/O behavior. Probe files answer the load-bearing question early: *what happens to content written by a non-whitelisted process, and what reads back?*
 
 **Output:** diagnostics report (`.fbreport.json`), evidence-classed.
 
-## Stage 2 — Inventory ([#4](https://github.com/turinglambdaai/fileboundary/issues/4))
+## Stage 2 — Inventory ([#4](https://github.com/turlamai/fileboundary/issues/4))
 
 Batch-scan the target locations. For every file: size, timestamps, SHA-256, format sniff, classification label with confidence and evidence ([architecture.md](architecture.md#inventory-module--planned-4)). The scan is resumable; results persist in a manifest.
 
@@ -31,7 +31,7 @@ The operator selects files from the manifest and chooses, per selection, the rec
 
 The path basis is recorded per batch in the audit log **before** recovery starts. Ordering rule: cheapest first — sanctioned channels when they exist, then adversarial paths in the research program's order. A selection with no available path stays open, not closed: new research results reopen it.
 
-## Stage 4 — Recover ([#5](https://github.com/turinglambdaai/fileboundary/issues/5))
+## Stage 4 — Recover ([#5](https://github.com/turlamai/fileboundary/issues/5))
 
 Run the selected path through the engine's recovery adapter. State-mutating steps (driver/service interaction beyond read-only enumeration) follow the gated experiment protocol ([security.md](security.md#technique-scope)). Outputs land only in the Stage-0 directory. Every attempt — success or failure — produces exactly one audit record with: timestamp, file identity, path, parameters, outcome, and pointers to evidence.
 

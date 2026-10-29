@@ -4,8 +4,8 @@
 
 ## 下载与启动
 
-1. 用有权访问 `turinglambdaai/fileboundary` 私有仓库的账号登录 GitHub。
-2. 打开 [Windows GUI 构建工作流](https://github.com/turinglambdaai/fileboundary/actions/workflows/windows-gui.yml)。
+1. 用有权访问 `turlamai/fileboundary` 私有仓库的账号登录 GitHub。
+2. 打开 [Windows GUI 构建工作流](https://github.com/turlamai/fileboundary/actions/workflows/windows-gui.yml)。
 3. 选择最新的 **main 分支且结果为绿色 Success** 的运行，在页面底部 **Artifacts** 下载 `FileBoundary-Windows-x64-dev`。功能分支产物只用于 PR 审查。
 4. 将 ZIP **全部解压**到本地文件夹，例如 `D:\Tools\FileBoundary`。必须保留 `runtime/`、`res/`、DLL 和 `RivetHost.exe` 的完整目录结构，不要在压缩包内直接双击。
 5. 运行 `RivetHost.exe`。这是尚未签名的便携**开发预览版**，并非已完成的安装包。如果受到系统或公司策略阻止，请记录实际错误和程序来源；**不要关闭 Windows 安全软件或企业防护**。

@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Windows 10 / 11 x64 for development and testing; administrator rights needed to exercise full diagnostics ([#3](https://github.com/turinglambdaai/fileboundary/issues/3)).
+- Windows 10 / 11 x64 for development and testing; administrator rights needed to exercise full diagnostics ([#3](https://github.com/turlamai/fileboundary/issues/3)).
 - Toolchain: **Racket-first preferred**, with Rivet/WinUI 3 as the initial native Windows GUI candidate and Glaze/WebView2 as a fallback, as documented by [proposed ADR-0002](decisions/adr-0002-prototype-stack.md). The C#/WinForms v0.1 prototype is not the default stack. Pin a concrete Racket CS version, package commit/release and native SDK only after actual Windows spikes (#1/#2). Until that decision is accepted, this document defines the **workflow**, not invented build commands; verified commands arrive with the accepted ADR.
 - Editor and line-ending hygiene: [.editorconfig](../.editorconfig) + [.gitattributes](../.gitattributes) (LF in the repository).
 
@@ -15,7 +15,7 @@
 5. **PR.** Use the PR template; state what/why/how-verified; check the [security.md](security.md) boundaries if touching diagnostics, recovery, permissions, or output writing.
 6. **Merge.** CI green required; squash merge to keep history linear; delete the branch after merge. `main` always green: whoever breaks it fixes or reverts immediately.
 
-The PR path applies to everyone, including administrators. Server-side enforcement (branch protection / rulesets) requires GitHub Pro on private repositories — until the plan allows it, the rule is enforced by review discipline, and it gets configured the moment the plan does ([#6](https://github.com/turinglambdaai/fileboundary/issues/6)).
+The PR path applies to everyone, including administrators. Server-side enforcement (branch protection / rulesets) requires GitHub Pro on private repositories — until the plan allows it, the rule is enforced by review discipline, and it gets configured the moment the plan does ([#6](https://github.com/turlamai/fileboundary/issues/6)).
 
 ## Coding standards
 

@@ -26,4 +26,4 @@ Significant decisions for FileBoundary are recorded here as short, numbered docu
 | [ADR-0004](ADR-0004-real-sample-twin-pair-and-deferred-removal.md) | Controlled encrypted/plaintext twin pair | Accepted |
 | [ADR-0005](ADR-0005-personal-pdf-removed-from-head.md) | Remove prior personal specimen from active tree | Accepted; history purge pending (#23) |
 | [ADR-0006](ADR-0006-adversarial-recovery-mandate.md) | Adversarial recovery mandate — technique prohibitions lifted, scope and evidence rules fixed | Accepted |
-| ADR-0002 | Technology stack (pending prototype review) | Proposed placeholder — see [#2](https://github.com/turinglambdaai/fileboundary/issues/2) |
+| ADR-0002 | Technology stack (pending prototype review) | Proposed placeholder — see [#2](https://github.com/turlamai/fileboundary/issues/2) |

@@ -33,7 +33,7 @@ The owner's directive: FileBoundary is an **adversarial recovery research progra
 ## Consequences
 
 - Same-PR document updates: [security.md](../security.md) (authorization basis + technique scope rewrite), [adversarial-research.md](../adversarial-research.md) (new research program), [architecture.md](../architecture.md) (recovery adapters, diagnostics principle), [recovery-workflow.md](../recovery-workflow.md) (escalation), [../../README.md](../../README.md) and [../../README.zh-CN.md](../../README.zh-CN.md) (positioning), [../../AGENTS.md](../../AGENTS.md) (charter repositioning).
-- Issue [#5](https://github.com/turinglambdaai/fileboundary/issues/5) is renamed in docs to "File recovery and verification": it now covers all recovery paths, not only sanctioned ones.
+- Issue [#5](https://github.com/turlamai/fileboundary/issues/5) is renamed in docs to "File recovery and verification": it now covers all recovery paths, not only sanctioned ones.
 - Future slices may contain adversarial capabilities (memory scanning, injection harnesses, IOCTL replay, decryptors); each lands with the same test and evidence bars as any other slice, plus the state-mutation gate where applicable.
 - The verification pipeline gains importance, not less: the wider the technique surface, the more the single evidence gate matters.
 
