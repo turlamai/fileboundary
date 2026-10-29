@@ -27,7 +27,7 @@ The owner's Windows machine runs third-party transparent file encryption softwar
 ## Consequences
 
 - The repository starts without a LICENSE file; distribution rights are withheld by default.
-- No Releases exist until the release train ([#9](https://github.com/turinglambdaai/fileboundary/issues/9)) lands with evidence.
+- No Releases exist until the release train ([#9](https://github.com/turlamai/fileboundary/issues/9)) lands with evidence.
 - The technology stack is deliberately undecided until ADR-0002; no production code is written before it is accepted.
 - Every contributor inherits the hard boundaries above; changes to them require a superseding ADR.
 
