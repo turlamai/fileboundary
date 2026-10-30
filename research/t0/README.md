@@ -26,7 +26,8 @@ specimen: 29 pages recovered, text extraction and object-level checks pass.
 python research/t0/build_pad.py            # 421/512 columns from the twin fixture (crc/struct/chain tiers)
 python research/t0/pad_from_objects2.py    # complete the pad: object headers x xref records cross-vote (needs a wrapped PDF with a classic xref); emits pad_full.json
 python research/t0/reconstruct_head.py     # PDF: rebuild the overwritten 512-byte head (catalog + pages tree), patch xref records
-python research/t0/assemble_docx.py        # OOXML: reassemble a standalone .docx, all 12 entries CRC-verified
+python research/t0/assemble_ooxml.py <wrapped> [out]  # OOXML (docx/xlsx/pptx): reassemble standalone, all entries CRC-verified
+python research/t0/assemble_docx.py        # docx twin variant with fingerprint gate
 ```
 
 `decrypt_pdf.py` is the non-reconstructing variant (usable when the zone
