@@ -65,6 +65,7 @@ FileBoundary 的目标是让这一局面变得可度量、可破解：所有者�
 6. **管理恢复流程** —— 基于 manifest 的选择、每次尝试的审计记录、恢复集合与 manifest 的对账（[docs/recovery-workflow.md](docs/recovery-workflow.md)）。
 7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turlamai/fileboundary/issues/7)）。
 8. **工程严谨性** —— Windows CI、自动化测试与双语文档从第一天建立（[#6](https://github.com/turlamai/fileboundary/issues/6)、[#8](https://github.com/turlamai/fileboundary/issues/8)）。
+9. **在线更新** —— `update check` / `update apply` 对接 GitHub Releases 渠道，增量包只携带变更文件（[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）。
 
 ## 研究纲领
 
