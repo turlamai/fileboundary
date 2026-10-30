@@ -1,0 +1,22 @@
+{
+ "kind": "esafenet-decryption-fixtures",
+ "added": "2026-10-30",
+ "authority": "ADR-0007 (owner directive)",
+ "note": "encrypted wrappers only; decrypted outputs stay outside the repository",
+ "specimens": {
+  "esafenet-wrapped-courseware.pdf": {
+   "bytes": 26516346,
+   "sha256": "3d91c88f9d089d59e6e993849327b6ef97609fb200a7c7399e6f7b3b542338e1",
+   "magic": "621423659b006501",
+   "zone": 155,
+   "tail": 357
+  },
+  "esafenet-wrapped-radar-motor-sheet.xlsx": {
+   "bytes": 2944674,
+   "sha256": "2f0cb14ee3b03e9bffdcb7e0e3b096ab781d5d8c0a9c8dccb28d8096eaa4f694",
+   "magic": "62142365bc014400",
+   "zone": 444,
+   "tail": 68
+  }
+ }
+}
