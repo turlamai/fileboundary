@@ -37,9 +37,15 @@ over ~1400 objects with zero conflicts).
 - Pad completed 512/512 offline.
 - Body decrypts byte-exact from offset 512; xref spot-check 126/126 record
   offsets land on `N 0 obj`.
-- Head (512 B: catalog, pages tree, one auxiliary object) rebuilt
-  semantically; pypdf opens the result: 29 pages, ~4.5 KB extractable text
-  plus 28 image XObjects.
+- Head rebuilt semantically; pypdf opens the result: **28 pages in the
+  correct order** (cover page first), ~4.5 KB extractable text plus image
+  XObjects. The cover page object (object 3) straddles the overwrite
+  boundary at offset 512 — its surviving tail carries StructParents 0
+  (first page) and /Contents 4 0 R, so the lost 82 dict bytes are
+  reconstructed as filler + /X joined to the surviving '/XObject...' text,
+  and the pages tree is rebuilt xref-driven (never crossing object
+  boundaries — a naive content scan misclassifies FontDescriptor objects
+  as pages and inserts blank pages).
 - The first version of the document's own head (exact bytes of objects
   1–3) remains recoverable with the driver dictionary (FIELD_PROTOCOL
   step 3); the semantic reconstruction renders identically.

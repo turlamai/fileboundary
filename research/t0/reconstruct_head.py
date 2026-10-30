@@ -18,7 +18,7 @@ from pathlib import Path
 
 PAD = Path("D:/Codes/fileboundary/research/t0/pad_full.json")
 PDF = Path("D:/Codes/fileboundary-artifacts/t0-samples/esafenet-locked-sample.pdf")
-OUT = Path("D:/Codes/fileboundary-artifacts/t0-samples/说给对方听.decrypted.pdf")
+OUT = Path("D:/Codes/fileboundary-artifacts/t0-samples/说给对方听.decrypted.v2.pdf")
 
 
 def main() -> int:
@@ -28,36 +28,71 @@ def main() -> int:
     n = len(ct)
     S = bytearray(ct[o] ^ pad[o % 512] for o in range(n))
 
-    # page objects in the intact body
+    # page objects, driven by the xref table (never crosses object
+    # boundaries): for each table entry, check the object's OWN dict for
+    # /Type /Page (excluding /Pages). Object-number order == generation
+    # order == page order (verified: xref-offset order is identical).
+    m = re.search(rb"xref\r\n0 (\d+)\r\n", bytes(S[512:]))
+    tstart = 512 + m.end()
+    count = int(m.group(1))
     page_objs = []
-    for m in re.finditer(rb"(\d{1,6}) 0 obj", bytes(S[512:])):
-        seg = S[512 + m.start():512 + m.start() + 400]
-        if re.search(rb"/Type\s*/Page[\s>/]", seg) and \
-                not re.search(rb"/Type\s*/Pages", seg):
-            page_objs.append(int(m.group(1)))
-    page_objs = sorted(set(page_objs))
-    print(f"page objects: {len(page_objs)}")
+    for k in range(count):
+        rec = S[tstart + 20 * k:tstart + 20 * (k + 1)]
+        if rec[17:18] != b"n":
+            continue
+        off = int(rec[:10])
+        if off < 512 or off + 200 > n:
+            continue  # lost-head objects are rebuilt explicitly below
+        if not re.match(rb"\d{1,6} 0 obj", S[off:off + 16]):
+            continue
+        seg = S[off:off + 4096].split(b"endobj")[0]
+        if re.search(rb"/Type\s*/Page(?![s])", seg):
+            page_objs.append(k)
+    print(f"page objects (xref-driven): {len(page_objs)}: {page_objs}")
 
     # does anything reference object 3?
-    refs3 = len(re.findall(rb"3 0 R", bytes(S[512:])))
-    print(f"references to '3 0 R' in body: {refs3}")
+    refs3 = len(re.findall(rb"(?<!\d)3 0 R", bytes(S[512:])))
+    print(f"references to '3 0 R' in body (word-boundary): {refs3}")
 
     kids = " ".join(f"{k} 0 R" for k in page_objs)
+    # object 3 (the cover page) spans the overwrite boundary at 512: its
+    # dict tail survives from 512 (StructParents 0 -> it IS page 1), only
+    # the first 82 bytes were lost. Rebuild them so the head chunk ends
+    # exactly at 512 and joins the surviving '/XObject' text.
+    lost = bytes(S[512:729])
+    assert lost.startswith(b"Object<</Image6 6 0 R>>/Font"), lost[:40]
+    assert lost.endswith(b"endobj\r\n"), lost[-20:]
+    prefix = b"3 0 obj\r\n<</Type/Page/Parent 2 0 R/Resources<<"
+    pad_len = (729 - 430) - len(prefix) - 2 - len(lost)
+    assert pad_len >= 0
+    obj3 = prefix + b" " * pad_len + b"/X" + lost
+    assert len(obj3) == 729 - 430, len(obj3)
+    print(f"object 3 (cover page) rebuilt at 430, {len(obj3)} B, "
+          f"StructParents 0")
+
     head = bytearray()
     head += b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
     off1 = len(head)
     head += b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
     off2 = len(head)
+    full_kids = [3] + page_objs
+    kids = " ".join(f"{k} 0 R" for k in full_kids)
     head += (b"2 0 obj\n<< /Type /Pages /Kids[" + kids.encode() +
-             b"] /Count " + str(len(page_objs)).encode() +
+             b"] /Count " + str(len(full_kids)).encode() +
              b" >>\nendobj\n")
-    assert len(head) <= 512, f"head too long: {len(head)}"
-    head += b"%" + b".fb-head-reconstruction" + b"\n"
-    head += b"%" * (512 - len(head) - 1) + b"\n"
-    assert len(head) == 512, len(head)
+    assert len(head) + (729 - 430) <= 512 + 217, "layout mismatch"
+    # obj3 lives at ORIGINAL offset 430..728 — i.e. it straddles the head
+    # boundary. Head buffer: bytes 0..429 = header+obj1+obj2, then obj3
+    # occupies 430..728 which overlaps the S body region 512..728 (kept).
+    # So: emitted = head[0:430] + obj3[0:82] + S[512:]. Simpler: build
+    # head up to 430, then place the first 82 bytes of obj3, then S[512:].
+    assert len(head) <= 430, f"head prefix too long: {len(head)}"
+    head += b"%" * (430 - len(head) - 1) + b"\n"
+    assert len(head) == 430, len(head)
     print(f"head rebuilt: obj1@{off1} obj2@{off2} total 512")
 
-    # patch xref records 1, 2, 3 in the decoded table
+    # patch xref records 1, 2 (rebuilt offsets) — record 3 already points
+    # at 430 and is valid again now that object 3 is restored.
     m = re.search(rb"xref\r\n0 (\d+)\r\n", bytes(S[512:]))
     tstart = 512 + m.end()
     def set_rec(k, off, gen=0, kind=b"n"):
@@ -65,9 +100,8 @@ def main() -> int:
             b"%010d %05d %s\r\n" % (off, gen, kind)
     set_rec(1, off1)
     set_rec(2, off2)
-    set_rec(3, 0, 65535, b"f")
 
-    original = bytes(head) + bytes(S[512:])
+    original = bytes(head) + obj3 + bytes(S[729:])
     assert len(original) == n, (len(original), n)
     OUT.write_bytes(original)
     print(f"wrote {OUT} ({len(original)} B)")
@@ -86,6 +120,7 @@ def main() -> int:
         if not re.match(rb"\d{1,6} 0 obj", original[off:off + 32]):
             bad += 1
     print(f"xref spot-check: {checked - bad}/{checked} land on object headers")
+    assert original[430:440] == b"3 0 obj\r\n<", original[430:445]
     try:
         from pypdf import PdfReader
         r = PdfReader(str(OUT))
