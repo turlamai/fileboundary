@@ -43,11 +43,15 @@ Headlines (all measured on the committed twin + the retired PDF specimen):
   constant inside the client driver; small entries that avoid dictionary
   references decrypt outright (one entry already VERIFIED offline with the
   pad at 421/512 proven columns).
-- Consequence: strategy decision S1/S4 resolved — the backlog is
-  offline-decryptable once the pad is completed (minutes, from minted
-  twins on the operator machine) and the driver's dictionary blob is
-  extracted (T2-lite). T1 ride-along remains the fastest first-recovery
-  path and also produces the known-plaintext pairs.
+- Consequence (updated 2026-10-29): the break is **end-to-end offline**.
+  The pad completed 512/512 using the wrapped file's own structure
+  (object headers × xref records cross-vote — no twins needed for
+  PDF-class files), and a full 25 MB specimen was recovered and verified
+  (pypdf, 29 pages; see [../research/t0/README.md](../research/t0/README.md)).
+  OOXML packages additionally need the driver's dictionary blob for
+  entry-level byte-exactness (FIELD_PROTOCOL step 3); plain files do not.
+  T1/T2 remain useful for OOXML fidelity and speed, but are no longer on
+  the critical path.
 
 ## Attack surface
 

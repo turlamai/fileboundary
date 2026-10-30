@@ -23,7 +23,7 @@ under the ADR-0006 mandate; nothing here mutates protection-system state.
 | Pad scope | **policy-global** — the pad recovered from one file decrypts other files' prose (verified across docx + 25 MB PDF) |
 | Body content | a rebuilt zip: first entry's local header stripped (CD keeps lho=0), its content stored as a raw-deflate blob in the wrapper's metadata zone; all later entries + CD + EOCD intact |
 | Entry compression | raw deflate **with a preset dictionary** (`invalid distance too far back` without it) — the dictionary is a fixed constant inside the E-SafeNet client driver |
-| Offline status | pad 421/512 columns proven (`research/t0/pad.json`); `_rels/.rels` fully VERIFIED; document/settings identified as dictionary-dependent; the rest derailed on unproven pad columns |
+| Offline status | **END-TO-END BREAK**: pad completed 512/512 offline (object-header ↔ xref cross-vote, `pad_full.json`); the retired PDF specimen fully recovered (29 pages, pypdf-verified, xref spot-check 126/126) with a semantic 512-byte head rebuild (`reconstruct_head.py`); see [README](README.md). The driver dictionary now only affects OOXML entry-level byte-exactness and the exact bytes of a wrapped file's first 512 bytes |
 
 Reproduced by: `python research/t0/build_pad.py` then
 `python research/t0/esafenet_decryptor.py <file> --pad=research/t0/pad.json`.
