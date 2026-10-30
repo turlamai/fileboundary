@@ -20,6 +20,20 @@ specimen: 29 pages recovered, text extraction and object-level checks pass.
   **reconstructed semantically**; for OOXML packages everything decrypts
   outright.
 
+## Productized (2026-10-31)
+
+The engine and CLI now ship this pipeline natively — no Python needed:
+
+- `racket src/cli.rkt decrypt --in FILE --out FILE [--pad PATH]`
+  (engine: `src/engine/decrypt.rkt`; OOXML per-entry CRC verification,
+  PDF semantic head rebuild + xref spot-check)
+- `racket src/cli.rkt pad twin --plain FILE --cipher FILE --out FILE`
+  (policy pad recovery from one aligned twin pair)
+- default pad: `research/t0/pad_full.json` (committed per ADR-0007)
+
+The Python scripts below remain as the research record of how the
+model was derived.
+
 ## Pipeline
 
 ```
