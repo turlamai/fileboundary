@@ -39,19 +39,21 @@ Headlines (all measured on the committed twin + the retired PDF specimen):
 - The body is a rebuilt zip: first local header stripped (CD lho=0), its
   content relocated into the wrapper's metadata zone as a raw-deflate blob;
   everything else intact.
-- Entry payloads are deflate **with a preset dictionary** — a fixed
-  constant inside the client driver; small entries that avoid dictionary
-  references decrypt outright (one entry already VERIFIED offline with the
-  pad at 421/512 proven columns).
-- Consequence (updated 2026-10-29): the break is **end-to-end offline**.
-  The pad completed 512/512 using the wrapped file's own structure
-  (object headers × xref records cross-vote — no twins needed for
-  PDF-class files), and a full 25 MB specimen was recovered and verified
-  (pypdf, 29 pages; see [../research/t0/README.md](../research/t0/README.md)).
-  OOXML packages additionally need the driver's dictionary blob for
-  entry-level byte-exactness (FIELD_PROTOCOL step 3); plain files do not.
-  T1/T2 remain useful for OOXML fidelity and speed, but are no longer on
-  the critical path.
+- Entry payloads are **standard dictionary-free deflate**. (The earlier
+  preset-dictionary reading was an incomplete-pad artifact: missing pad
+  columns derail the decoder into misleading zlib errors. With the pad
+  completed, the wrapped OOXML twin recovers fully — all 12 entries
+  CRC-verified.)
+- Consequence (updated 2026-10-29): the break is **end-to-end offline,
+  all formats**. The pad completed 512/512 from wrapped files' own
+  structure (object headers × xref records cross-vote), a full 25 MB PDF
+  specimen was recovered and verified (pypdf, 28 pages, cover restored;
+  see [../research/t0/README.md](../research/t0/README.md)), and the
+  wrapped OOXML twin fully recovers — all 12 entries CRC-verified with
+  the content fingerprint confirmed. The earlier driver-dictionary
+  dependency was disproven (an incomplete-pad artifact). T1/T2 remain
+  useful for speed and for files whose pad differs by policy revision,
+  but are no longer on the critical path.
 
 ## Attack surface
 

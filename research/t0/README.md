@@ -11,17 +11,22 @@ specimen: 29 pages recovered, text extraction and object-level checks pass.
 - The wrapper overwrites original bytes `0..zone+tail` (zone = header field
   4–5, tail = field 6–7; zone+tail = 512) with its own header + metadata
   zone. Body bytes stay at **identical offsets** (no shift).
-- Entry/zone compression is raw deflate **with a preset dictionary** living
-  in the client driver. For OOXML packages the entries need it; for plain
-  files (PDF etc.) only the first 512 bytes were compressed, and they can
-  be **reconstructed semantically** instead.
+- Entry compression is **standard, dictionary-free raw deflate**. (An
+  earlier hypothesis of a zlib preset dictionary was an artifact of an
+  incomplete pad: with pad columns missing the decoder derails and zlib
+  reports misleading errors like `invalid distance too far back`. With
+  the completed pad every entry inflates cleanly and CRC-verifies.) For
+  plain files (PDF etc.) the overwritten first 512 bytes are
+  **reconstructed semantically**; for OOXML packages everything decrypts
+  outright.
 
 ## Pipeline
 
 ```
 python research/t0/build_pad.py            # 421/512 columns from the twin fixture (crc/struct/chain tiers)
-python research/t0/pad_from_objects2.py    # complete the pad: object headers x xref records cross-vote (needs a wrapped PDF with a classic xref)
-python research/t0/reconstruct_head.py     # rebuild the overwritten 512-byte head (catalog + pages tree), patch xref records, emit the original file
+python research/t0/pad_from_objects2.py    # complete the pad: object headers x xref records cross-vote (needs a wrapped PDF with a classic xref); emits pad_full.json
+python research/t0/reconstruct_head.py     # PDF: rebuild the overwritten 512-byte head (catalog + pages tree), patch xref records
+python research/t0/assemble_docx.py        # OOXML: reassemble a standalone .docx, all 12 entries CRC-verified
 ```
 
 `decrypt_pdf.py` is the non-reconstructing variant (usable when the zone

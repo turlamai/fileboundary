@@ -27,10 +27,11 @@ def load_pad():
     prov = set(d["proven"]["crc_tier"]) | set(d["proven"]["struct_tier"]) \
         | set(d["proven"]["chain_tier"])
     pad = {i: v for i, v in enumerate(d["pad"]) if v is not None}
-    tier = json.loads(PAD_TIER.read_text())
-    for c, v in enumerate(tier["pad"]):
-        if v is not None and c not in pad:
-            pad[c] = v
+    if PAD_TIER.exists():
+        tier = json.loads(PAD_TIER.read_text())
+        for c, v in enumerate(tier["pad"]):
+            if v is not None and c not in pad:
+                pad[c] = v
     return pad, prov
 
 
