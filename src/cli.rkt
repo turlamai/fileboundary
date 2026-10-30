@@ -4,18 +4,25 @@
 (require json
          racket/file
          racket/list
+         racket/path
+         racket/runtime-path
          racket/string
          "engine/inventory.rkt"
          "engine/diagnostics.rkt"
          "engine/recovery.rkt"
-         "engine/update.rkt")
+         "engine/update.rkt"
+         "engine/decrypt.rkt")
 
 (provide run-cli)
 
 (define schema-version "1.0")
-(define product-version "0.1.0+dev")
+(define product-version "0.2.0+dev")
 (define default-manifest-url
   "https://github.com/turinglambdaai/fileboundary/releases/latest/download/manifest.json")
+
+(define-runtime-path repo-root "..")
+(define default-pad-path
+  (build-path repo-root "research" "t0" "pad_full.json"))
 
 (define (coded code message)
   (hash 'code code 'message message))
@@ -23,7 +30,35 @@
 (define (bad-usage)
   (values 2 "error" (hash) '()
           (list (coded "invalidArguments"
-                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | update status | update check [--manifest URL|PATH] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
+                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE [--pad PATH] | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
+
+;; decrypt: OOXML first (its CD is findable), fall back to the PDF path
+(define (run-decrypt in-path out-path pad-path)
+  (define pad (load-pad pad-path))
+  (define ct (file->bytes in-path))
+  (parse-wrapper ct)
+  (define result
+    (with-handlers ([exn:fail?
+                     (lambda (_)
+                       (define r (decrypt-pdf ct pad))
+                       (hash 'kind "pdf"
+                             'headRebuilt (hash-ref r 'headRebuilt)
+                             'pages (hash-ref r 'pages)
+                             'coverObject (hash-ref r 'coverObject)
+                             'xrefChecked (hash-ref r 'xrefChecked)
+                             'xrefBad (hash-ref r 'xrefBad)
+                             'bytes (hash-ref r 'bytes)))])
+      (define r (decrypt-ooxml ct pad))
+      (hash 'kind "ooxml"
+            'entries (hash-ref r 'entries)
+            'verified (hash-ref r 'verified)
+            'total (hash-ref r 'total)
+            'bytes (hash-ref r 'bytes))))
+  (with-output-to-file out-path
+    (lambda () (write-bytes (hash-ref result 'bytes)))
+    #:exists 'replace)
+  (for/hash ([k (in-list (hash-keys result))] #:unless (equal? k 'bytes))
+    (values k (hash-ref result k))))
 
 ;; flag parse helper: returns (values positionals flags); flags with values
 ;; are listed in known-value-flags, all other "--x" become boolean flags
@@ -120,9 +155,74 @@
                                       "Export comparison is not decryption or independent structural/reader verification."))
                          '())))
            (bad-usage)))]
+    [(equal? command "decrypt")
+     (let-values ([(_ flags) (split-flags rest '("--in" "--out" "--pad"))])
+       (define in-path (hash-ref flags "--in" (lambda () #f)))
+       (define out-path (hash-ref flags "--out" (lambda () #f)))
+       (define pad-path (or (hash-ref flags "--pad" (lambda () #f))
+                            default-pad-path))
+       (if (and in-path out-path)
+           (let ([report (run-decrypt in-path out-path pad-path)])
+             (values 0 "ok"
+                     (hash-set report
+                               'output
+                               (path->string
+                                (file-name-from-path out-path)))
+                     '() '()))
+           (bad-usage)))]
+    [(equal? command "pad")
+     (pad-command rest)]
     [(equal? command "update")
      (update-command rest)]
     [else (bad-usage)]))
+
+;; pad twin: recover the policy pad from an aligned plaintext/ciphertext
+;; pair (FIELD_PROTOCOL step 2); writes a pad JSON for --out
+(define (pad-command rest)
+  (if (null? rest)
+      (bad-usage)
+      (let ([sub (car rest)] [args (cdr rest)])
+        (cond
+          [(equal? sub "twin")
+           (let-values ([(_ flags)
+                         (split-flags args '("--plain" "--cipher" "--out" "--pad"))])
+             (define plain (hash-ref flags "--plain" (lambda () #f)))
+             (define cipher (hash-ref flags "--cipher" (lambda () #f)))
+             (define out (hash-ref flags "--out" (lambda () #f)))
+             (define base-src (hash-ref flags "--pad" (lambda () #f)))
+             (if (and plain cipher out)
+                 (let* ([base (if base-src
+                                  (load-pad base-src)
+                                  (hash))]
+                        [r (twin-vote (file->bytes plain)
+                                      (file->bytes cipher)
+                                      base)]
+                        [pad (hash-ref r 'pad)]
+                        [missing (hash-ref r 'missing)])
+                   (with-output-to-file out
+                     (lambda ()
+                       (write-json
+                        (hash 'schemaVersion 1
+                              'kind 'policy-pad
+                              'pad (for/list ([c (in-range 512)])
+                                     (or (hash-ref pad c #f)
+                                         (json-null)))))
+                       (newline))
+                     #:exists 'replace)
+                   (values (if (null? missing) 0 1)
+                           (if (null? missing) "ok" "partial")
+                           (hash 'covered (hash-ref r 'covered)
+                                 'missingCount (length missing)
+                                 'output
+                                 (path->string
+                                  (file-name-from-path out)))
+                           '()
+                           (if (null? missing)
+                               '()
+                               (list (coded "padIncomplete"
+                                            "Some pad columns are still unknown; add another twin pair.")))))
+                 (bad-usage)))]
+          [else (bad-usage)]))))
 
 ;; update subcommand: status | check | apply. Network use is explicit:
 ;; check hits the manifest URL only when asked (default channel URL),

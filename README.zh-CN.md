@@ -60,7 +60,7 @@ FileBoundary 的目标是让这一局面变得可度量、可破解：所有者�
 1. **分析加密机制** —— 枚举 minifilter、过滤驱动与服务配置、注入模块、hook 启发式检测，以及探针文件上的 I/O 行为（[#3](https://github.com/turlamai/fileboundary/issues/3)）。
 2. **诊断** —— 输出机器可读的报告：当前过滤栈与各进程的读写行为。
 3. **盘点加密文件** —— 批量扫描磁盘，按加密可能性分类，记录文件状态、SHA-256 与格式信息（[#4](https://github.com/turlamai/fileboundary/issues/4)）。
-4. **恢复——不设渠道限制** —— 有厂商授权渠道就走授权渠道；没有就走对抗路径：白名单伴随与伪装、从密钥管理服务/驱动/进程内存提取密钥、基于格式分析的独立解密（[#5](https://github.com/turlamai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
+4. **恢复——不设渠道限制、全程离线** —— T0 破密已产品化：`decrypt` 用策略 pad 重构封装的 OOXML（docx/xlsx/pptx，逐条目 CRC 验证）与封装的 PDF（语义头重建 + xref 抽查）；`pad twin` 从一对对齐的明文/密文恢复策略 pad（[#5](https://github.com/turinglambdaai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
 5. **验证完整性** —— 恢复文件只有通过完整验证管线才可标记 `verified`；复制成功不等于解密成功（[#5](https://github.com/turlamai/fileboundary/issues/5)）。
 6. **管理恢复流程** —— 基于 manifest 的选择、每次尝试的审计记录、恢复集合与 manifest 的对账（[docs/recovery-workflow.md](docs/recovery-workflow.md)）。
 7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turlamai/fileboundary/issues/7)）。

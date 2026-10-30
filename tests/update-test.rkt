@@ -44,7 +44,7 @@
 (define valid-manifest
   (hash 'schemaVersion 1
         'channel "stable"
-        'version "0.2.0"
+        'version "0.3.0"
         'commit "abc1234"
         'created "2026-10-30T00:00:00Z"
         'package (hash 'kind "full" 'name "FB.zip" 'bytes 123
@@ -64,8 +64,7 @@
 
 (define check-result (check-update valid-manifest "0.1.0"))
 (check-equal? (hash-ref check-result 'action) "update")
-(check-equal? (hash-ref check-result 'latestVersion) "0.2.0")
-(check-equal? (hash-ref (check-update valid-manifest "0.2.0") 'action) "none")
+(check-equal? (hash-ref check-result 'latestVersion) "0.3.0")
 (check-equal? (hash-ref (check-update valid-manifest "0.3.0") 'action) "none")
 
 ;; ---------- package builders ----------
@@ -94,7 +93,7 @@
            (hash "app.txt" #"new app"
                  "bin/tool.txt" #"new tool"))
 (define filetable
-  (hash 'version "0.2.0"
+  (hash 'version "0.3.0"
         'files (list (hash 'path "app.txt" 'sha256 (h "new app"))
                      (hash 'path "bin/tool.txt" 'sha256 (h "new tool")))))
 (with-output-to-file (build-path pkg-src "filetable.json")
@@ -106,11 +105,11 @@
                        'sha256 (sha256-file pkg-zip)))
 
 (define root (make-temporary-file "fb-root~a" 'directory))
-(check-equal? (apply-package pkg-zip pkg-meta root) "0.2.0")
-(check-equal? (installed-version root) "0.2.0")
-(check-equal? (file->string (build-path root "releases" "0.2.0" "app.txt"))
+(check-equal? (apply-package pkg-zip pkg-meta root) "0.3.0")
+(check-equal? (installed-version root) "0.3.0")
+(check-equal? (file->string (build-path root "releases" "0.3.0" "app.txt"))
               "new app")
-(check-equal? (file->string (build-path root "releases" "0.2.0" "bin" "tool.txt"))
+(check-equal? (file->string (build-path root "releases" "0.3.0" "bin" "tool.txt"))
               "new tool")
 
 ;; tampered package must be rejected before extraction
@@ -185,7 +184,7 @@
 (check-equal? sc1 0)
 (check-equal? (hash-ref d1 'errors) '())
 (define d1-data (hash-ref d1 'data))
-(check-equal? (hash-ref d1-data 'runningVersion) "0.1.0+dev")
+(check-equal? (hash-ref d1-data 'runningVersion) "0.2.0+dev")
 (check-true (hash-has-key? d1-data 'installRoot))
 
 (define manifest-path (make-temporary-file "fb-manifest~a.json"))
@@ -197,4 +196,4 @@
 (check-equal? (hash-ref d2 'errors) '())
 (define d2-data (hash-ref d2 'data))
 (check-equal? (hash-ref d2-data 'updateAvailable) #t)
-(check-equal? (hash-ref d2-data 'latestVersion) "0.2.0")
+(check-equal? (hash-ref d2-data 'latestVersion) "0.3.0")
