@@ -2,8 +2,8 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-30
-- **Deciders:** owner (turinglambdaai), explicit directive in session
-- **Supersedes:** [ADR-0005](ADR-0005-personal-pdf-removed-from-head.md) (removal decision only — the specimen is now a wanted test asset; history purge under [#23](https://github.com/turinglambdaai/fileboundary/issues/23) is mooted for this blob)
+- **Deciders:** owner (turlamai), explicit directive in session
+- **Supersedes:** [ADR-0005](ADR-0005-personal-pdf-removed-from-head.md) (removal decision only — the specimen is now a wanted test asset; history purge under [#23](https://github.com/turlamai/fileboundary/issues/23) is mooted for this blob)
 - **Relates to:** [ADR-0006](ADR-0006-adversarial-recovery-mandate.md), [../adversarial-research.md](../adversarial-research.md)
 
 ## Context
@@ -40,7 +40,7 @@ fixtures so the pipeline stays regression-tested against real-world data.
   operator-side because they write artifacts outside the repo).
 - ADR-0003's archived status and ADR-0005 stand as history; this ADR
   governs the current state of the specimen.
-- Issue [#23](https://github.com/turinglambdaai/fileboundary/issues/23)
+- Issue [#23](https://github.com/turlamai/fileboundary/issues/23)
   scope shrinks to "archive hygiene" — the blob is intentionally retained.
 
 ## Scope of effect

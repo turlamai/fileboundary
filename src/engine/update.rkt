@@ -23,7 +23,10 @@
          check-update
          sha256-file
          fetch-manifest
+         download-or-copy!
          download-file!
+         pick-package
+         update-now!
          apply-package
          default-install-root
          installed-version
@@ -264,11 +267,62 @@
   (set-current-version! install-root target-version)
   target-version)
 
+;; ---------- one-command update ----------
+
+;; pick the cheapest applicable package for `current`: a delta whose
+;; baseVersion matches, else the full package
+(define (pick-package manifest current)
+  (define delta
+    (for/first ([d (in-list (hash-ref manifest 'deltas))]
+                #:when (equal? (hash-ref d 'baseVersion) current))
+      d))
+  (or delta (hash-ref manifest 'package)))
+
+(define (update-now! manifest-source install-root
+                     [running (installed-version install-root)])
+  (define manifest (fetch-manifest manifest-source))
+  (define latest (hash-ref manifest 'version))
+  (define running-v (or running product-fallback-version))
+  (if (not (version<? running-v latest))
+      (hash 'action "none"
+            'currentVersion running-v
+            'latestVersion latest)
+      (let* ([pkg (pick-package manifest running-v)]
+             [tmp (make-temporary-file "fb-now-~a.pkg")])
+        (dynamic-wind
+          (lambda ()
+            (download-or-copy! (hash-ref pkg 'url) tmp)
+            ;; structural guard before trusting the payload
+            (unless (string=? (sha256-file tmp) (hash-ref pkg 'sha256))
+              (error 'update-now "package hash mismatch for ~a"
+                     (hash-ref pkg 'name))))
+          (lambda ()
+            (define applied (apply-package tmp pkg install-root))
+            (hash 'action "applied"
+                  'previousVersion running-v
+                  'appliedVersion applied
+                  'kind (hash-ref pkg 'kind)))
+          (lambda ()
+            (with-handlers ([exn:fail? void]) (delete-file tmp)))))))
+
+(define product-fallback-version "0.0.0")
+
 ;; ---------- download ----------
 
+;; http(s) sources are fetched (the only networked paths, all
+;; operator-initiated); any other value is treated as a local file and
+;; copied — lets tests and air-gapped flows exercise the same code path
+(define (download-or-copy! source dest)
+  (cond [(or (string-prefix? source "http://")
+             (string-prefix? source "https://"))
+         (define in (get-pure-port (string->url source) #:redirections 5))
+         (define body (port->bytes in))
+         (close-input-port in)
+         (display-to-file body dest #:exists 'replace)
+         dest]
+        [else
+         (copy-file source dest #:exists-ok? #t)
+         dest]))
+
 (define (download-file! url dest)
-  (define in (get-pure-port (string->url url) #:redirections 5))
-  (define body (port->bytes in))
-  (close-input-port in)
-  (display-to-file body dest #:exists 'replace)
-  dest)
+  (download-or-copy! url dest))

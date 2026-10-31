@@ -9,7 +9,7 @@ This notice does **not** grant a license to FileBoundary's own source code.
 
 MIT License
 
-Copyright (c) 2026 turinglambdaai
+Copyright (c) 2026 turlamai
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

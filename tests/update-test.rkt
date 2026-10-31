@@ -190,6 +190,41 @@
 (define manifest-path (make-temporary-file "fb-manifest~a.json"))
 (with-output-to-file manifest-path
   (lambda () (write-json valid-manifest)) #:exists 'replace)
+;; ---------- one-command update-now (e2e, no network) ----------
+
+;; root at 0.2.0 -> `now` against a manifest whose package url is a LOCAL
+; file must land on 0.3.0 (the http and local paths share one code path)
+(define root4 (make-temporary-file "fb-root4~a" 'directory))
+;; seed: install the 0.3.0 full package, then pretend we're one behind by
+;; resetting the marker — the important part is the apply-from-manifest
+;; flow over a file://-style source
+(void (apply-package pkg-zip pkg-meta root4))
+(set-current-version! root4 "0.2.0")
+(define now-manifest (make-temporary-file "fb-now~a.json"))
+(with-output-to-file now-manifest
+  (lambda ()
+    (write-json
+     (hash 'schemaVersion 1 'channel "stable" 'version "0.3.0"
+           'commit "abc1234"
+           'package (hash 'kind "full" 'name (path->string pkg-zip)
+                          'bytes (file-size pkg-zip)
+                          'sha256 (sha256-file pkg-zip)
+                          'url (path->string pkg-zip))
+           'deltas '())))
+  #:exists 'replace)
+(define-values (sc3 d3)
+  (invoke (list "update" "now" "--manifest" (path->string now-manifest)
+                "--root" (path->string root4))))
+(check-equal? sc3 0)
+(check-equal? (hash-ref (hash-ref d3 'data) 'action) "applied")
+(check-equal? (hash-ref (hash-ref d3 'data) 'appliedVersion) "0.3.0")
+(check-equal? (installed-version root4) "0.3.0")
+;; and a no-op now reports action none
+(define-values (sc4 d4)
+  (invoke (list "update" "now" "--manifest" (path->string now-manifest)
+                "--root" (path->string root4))))
+(check-equal? (hash-ref (hash-ref d4 'data) 'action) "none")
+
 (define-values (sc2 d2)
   (invoke (list "update" "check" "--manifest" (path->string manifest-path))))
 (check-equal? sc2 0)

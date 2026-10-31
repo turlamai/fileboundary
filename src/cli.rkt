@@ -18,7 +18,7 @@
 (define schema-version "1.0")
 (define product-version "0.2.0+dev")
 (define default-manifest-url
-  "https://github.com/turinglambdaai/fileboundary/releases/latest/download/manifest.json")
+  "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
 
 (define-runtime-path repo-root "..")
 (define default-pad-path
@@ -30,7 +30,7 @@
 (define (bad-usage)
   (values 2 "error" (hash) '()
           (list (coded "invalidArguments"
-                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE [--pad PATH] | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
+                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE [--pad PATH] | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update now [--manifest URL|PATH] [--root DIR] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
 
 ;; decrypt: OOXML first (its CD is findable), fall back to the PDF path
 (define (run-decrypt in-path out-path pad-path)
@@ -254,6 +254,18 @@
                            'package (hash-ref result 'package (lambda () (hash)))
                            'deltas (hash-ref result 'deltas (lambda () '())))
                      '() '()))]
+          [(equal? sub "now")
+           (let-values ([(_ flags)
+                         (split-flags args '("--manifest" "--root"))])
+             (define manifest-src
+               (or (hash-ref flags "--manifest" (lambda () #f))
+                   default-manifest-url))
+             (define root (or (hash-ref flags "--root" (lambda () #f))
+                              (default-install-root)))
+             (define r (update-now! manifest-src root))
+             (if (equal? (hash-ref r 'action) "none")
+                 (values 0 "ok" r '() '())
+                 (values 0 "ok" r '() '())))]
           [(equal? sub "apply")
            (let-values ([(_ flags) (split-flags args '("--package" "--manifest" "--root" "--url"))])
              (define package (hash-ref flags "--package" (lambda () #f)))

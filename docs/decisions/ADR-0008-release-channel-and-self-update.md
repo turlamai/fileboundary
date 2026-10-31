@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-30
-- **Deciders:** owner (turinglambdaai), explicit directive in session
+- **Deciders:** owner (turlamai), explicit directive in session
 - **Relates to:** [ADR-0001](ADR-0001-project-scope-and-boundaries.md) (local-first clause), benchmark: Taskly's `X.Y.Z+<commit>` versioning and `current/` install layout
 
 ## Context
