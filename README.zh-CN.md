@@ -20,12 +20,12 @@
 
 ```powershell
 # 盘点与诊断（只读）
-racket src/cli.rkt scan "C:\test-data" --max-files 500
+racket src/cli.rkt scan "C:\\test-data" --max-files 500
 racket src/cli.rkt doctor
 
 # 解密（ADR-0006；策略 pad 默认取 research/t0/pad_full.json）
-racket src/cli.rkt decrypt --in "C:\Encrypted\doc.docx" --out "D:\Recovered\doc.docx"
-racket src/cli.rkt pad twin --plain "P:\plain.xlsx" --cipher "C:\ct.xlsx" --out "D:\\keys\\new-policy-pad.json"
+racket src/cli.rkt decrypt --in "C:\\Encrypted\\doc.docx" --out "D:\\Recovered\\doc.docx"
+racket src/cli.rkt pad twin --plain "P:\\plain.xlsx" --cipher "C:\\ct.xlsx" --out "D:\\keys\\new-policy-pad.json"
 
 # 自更新（GitHub Releases；私有仓库需设只读 PAT）
 $env:FILEBOUNDARY_GH_TOKEN = "<细粒度 PAT，contents:read-only>"
