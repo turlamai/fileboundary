@@ -6,7 +6,13 @@
 
 ## Status
 
-**Racket core developer preview, not a finished product.** This branch introduces `src/engine/inventory.rkt` and `src/cli.rkt` for read-only file inspection, bounded scanning and a versioned JSON envelope. Windows compilation and test status must be taken from [the real workflow](.github/workflows/windows-core.yml). A native **Rivet/WinUI 3 GUI source preview** is now part of this branch, offering bounded read-only scan summaries and Filter Manager diagnostics. Native compilation/packaging must be checked by [Windows GUI CI](.github/workflows/windows-gui.yml) before the GUI can be described as buildable. Broad diagnostics, manifest persistence, **full independent recovery verification**, and actual vendor-authorized plaintext export remain **not implemented**. Basic read-only export comparison is a preview feature. The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turlamai/fileboundary/issues/1)).
+**v0.2.0 released** — the adversarial recovery core is productized on the headless CLI ([release](https://github.com/turlamai/fileboundary/releases/tag/v0.2.0)). Three-layer accounting, per the engineering charter:
+
+- **Shipped (v0.2.0)**: `decrypt` (wrapped OOXML reassembled with per-entry CRC verification; wrapped PDFs rebuilt with a semantic head + xref spot-check), `pad twin` (policy-pad recovery from one aligned plaintext/ciphertext pair), and the self-update channel (`update now` against GitHub Releases with authenticated private-asset access and guarded delta packages). The release ships the source distribution + manifest; a bare directory updates 0.0.0 → 0.2.0 through the live channel (end-to-end verified).
+- **Implemented and locally verified**: the full test suite (194 tests + JSON Schema contract validation) is green on Windows, including end-to-end decryption of three pinned real specimens ([ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)). CI runs are temporarily blocked by an account billing issue — merge gates are handled by review until it is restored.
+- **Pending**: the WinUI host package is built by [Windows GUI CI](.github/workflows/windows-gui.yml) (same billing gate); the GUI decrypt panel is tracked in [#34](https://github.com/turlamai/fileboundary/issues/34); the installer ([#9](https://github.com/turlamai/fileboundary/issues/9)) follows once CI is green.
+
+The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turlamai/fileboundary/issues/1)).
 
 ### Headless developer preview
 
@@ -14,14 +20,23 @@ The Windows core CI now also checks `version`, `scan`, `doctor` and `verify` aga
 
 
 
-Requires Racket CS 9.3 on Windows. Invoke from the repository root:
+Requires Racket CS 9.3 on Windows (Windows 10/11 x64). Invoke from the repository root — or unzip a release and use `fileboundary.cmd`, which wraps the same CLI:
 
 ```powershell
-racket src/cli.rkt version
-racket src/cli.rkt scan "C:\\test-data\\fixture.pdf"
+# inventory & diagnostics (read-only)
 racket src/cli.rkt scan "C:\\test-data" --max-files 500
-raco test tests/inventory-test.rkt tests/cli-test.rkt
+racket src/cli.rkt doctor
+
+# decryption (ADR-0006; policy pad defaults to research/t0/pad_full.json)
+racket src/cli.rkt decrypt --in "C:\\Encrypted\\doc.docx" --out "D:\\Recovered\\doc.docx"
+racket src/cli.rkt pad twin --plain "P:\\plain.xlsx" --cipher "C:\\ct.xlsx" --out "D:\\keys\\new-policy-pad.json"
+
+# self-update (GitHub Releases; private repo -> set a read-only PAT)
+$env:FILEBOUNDARY_GH_TOKEN = "<fine-grained PAT, contents:read-only>"
+racket src/cli.rkt update now
 ```
+
+Every command emits one versioned JSON envelope on stdout ([contract](docs/cli-contract.md)); machine-readable output is the normative interface.
 
 Output is one JSON envelope; no file contents or full paths are emitted by default. Signatures are **not** proof of plaintext or restored data. `doctor` now provides a timestamped, bounded read-only Filter Manager inventory (fixed commands, 64 KiB/stream, 8 s timeout); `verify` now compares an **operator-provided authorized export** to the original source as a read-only evidence report; it does not create decrypted content or certify recovery. See [implementation limits](docs/implementation-slice.md).
 
@@ -114,15 +129,15 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 
 | Area | Issue | Status |
 |---|---|---|
-| Import and review the v0.1 prototype | [#1](https://github.com/turlamai/fileboundary/issues/1) | planned |
-| Modular Windows application architecture | [#2](https://github.com/turlamai/fileboundary/issues/2) | planned |
-| Windows file encryption diagnostics | [#3](https://github.com/turlamai/fileboundary/issues/3) | planned |
-| Encrypted file inventory and classification | [#4](https://github.com/turlamai/fileboundary/issues/4) | planned |
-| File recovery and verification | [#5](https://github.com/turlamai/fileboundary/issues/5) | planned |
-| Windows CI and automated tests | [#6](https://github.com/turlamai/fileboundary/issues/6) | planned |
-| Versioned JSON CLI contract | [#7](https://github.com/turlamai/fileboundary/issues/7) | planned |
-| Bilingual documentation | [#8](https://github.com/turlamai/fileboundary/issues/8) | planned |
-| Windows installer and portable release | [#9](https://github.com/turlamai/fileboundary/issues/9) | planned |
+| Import and review the v0.1 prototype | [#1](https://github.com/turlamai/fileboundary/issues/1) | done (source audit in [docs/prototype-review.md](docs/prototype-review.md)) |
+| Modular Windows application architecture | [#2](https://github.com/turlamai/fileboundary/issues/2) | done (engine/CLI/GUI split per [ADR-0002](docs/decisions/adr-0002-prototype-stack.md)) |
+| Windows file encryption diagnostics | [#3](https://github.com/turlamai/fileboundary/issues/3) | core shipped (`doctor`); driver/service/module inspection planned |
+| Encrypted file inventory and classification | [#4](https://github.com/turlamai/fileboundary/issues/4) | core shipped (`scan`); persistent manifest planned |
+| File recovery and verification | [#5](https://github.com/turlamai/fileboundary/issues/5) | core shipped (T0 decrypt + per-entry verification; [research program](docs/adversarial-research.md)) |
+| Windows CI and automated tests | [#6](https://github.com/turlamai/fileboundary/issues/6) | done (workflows live; runner temporarily blocked by account billing) |
+| Versioned JSON CLI contract | [#7](https://github.com/turlamai/fileboundary/issues/7) | done (schemas + [CI contract gate](contracts/command-data-v1.schema.json)) |
+| Bilingual documentation | [#8](https://github.com/turlamai/fileboundary/issues/8) | done (README mirror + ADR/decision records) |
+| Windows installer and portable release | [#9](https://github.com/turlamai/fileboundary/issues/9) | partially — release channel + self-update live ([ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md), [v0.2.0](https://github.com/turlamai/fileboundary/releases/tag/v0.2.0)); WinUI package + installer pending CI |
 
 ## Development
 
@@ -130,7 +145,7 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 
 ## Windows filter diagnostics (developer preview)
 
-Run `racket src/cli.rkt doctor` in a Windows console. This command only invokes bounded, read-only `fltmc.exe filters` and `fltmc.exe instances`; each check records exit status, output truncation and timeout. A nonzero child result or missing elevation is **not** interpreted as no filters. The result can be `partial` with exit code 1. Full driver, service and injection inspection remains planned. `verify` remains unimplemented; no ciphertext recovery is claimed.
+Run `racket src/cli.rkt doctor` in a Windows console. This command only invokes bounded, read-only `fltmc.exe filters` and `fltmc.exe instances`; each check records exit status, output truncation and timeout. A nonzero child result or missing elevation is **not** interpreted as no filters. The result can be `partial` with exit code 1. Full driver, service and injection inspection remains planned.
 
 ## License
 
