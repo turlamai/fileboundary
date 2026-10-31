@@ -7,6 +7,7 @@
 ;; explicit update commands.
 
 (require json
+         racket/system
          file/unzip
          racket/file
          racket/format
@@ -17,7 +18,8 @@
          net/url
          "sha256.rkt")
 
-(provide parse-version
+(provide github-release-url?
+         parse-version
          version<? version=? version->string
          parse-manifest
          check-update
@@ -104,10 +106,12 @@
 (define (fetch-manifest source)
   (define j
     (cond [(or (string-prefix? source "http://") (string-prefix? source "https://"))
-           (define in (get-pure-port (string->url source) #:redirections 5))
-           (define body (port->bytes in))
-           (close-input-port in)
-           (with-input-from-bytes body read-json)]
+           (define tmp (make-temporary-file "fb-man~a.json"))
+           (dynamic-wind
+             (lambda () (download-or-copy! source tmp))
+             (lambda () (with-input-from-file tmp read-json))
+             (lambda () (with-handlers ([exn:fail? void])
+                          (delete-file tmp))))]
           [else
            (with-input-from-file source read-json)]))
   (parse-manifest j))
@@ -312,14 +316,96 @@
 ;; http(s) sources are fetched (the only networked paths, all
 ;; operator-initiated); any other value is treated as a local file and
 ;; copied — lets tests and air-gapped flows exercise the same code path
+;;
+;; The repository is PRIVATE (ADR-0001): release assets 404 for anonymous
+;; requests. When FILEBOUNDARY_GH_TOKEN is set, GitHub release URLs are
+;; resolved through the REST API with the bearer token and the
+;; application/octet-stream accept header (the standard private-repo
+;; update pattern); without a token the plain fetch is attempted so the
+; failure stays honest.
+(define (gh-token)
+  (getenv "FILEBOUNDARY_GH_TOKEN"))
+
+(define github-release-url?
+  (byte-regexp #"^https://github[.]com/([^/]+)/([^/]+)/releases/(?:latest/download/([^/]+)|(?:tags/)?download/([^/]+)/([^/]+))$"))
+
+;; HTTP via the OS curl (ships with Windows 10+): redirects, chunking and
+;; content-encodings are delegated to the battle-tested implementation.
+;; Capability sourcing per docs/architecture.md: mature executable +
+;; process isolation, argv only, exit checked.
+(define (curl-bin)
+  (or (find-executable-path "curl")
+      (and (file-exists? "C:/Windows/System32/curl.exe")
+           (string->path "C:/Windows/System32/curl.exe"))))
+
+(define (http-fetch-to-file! url dest headers)
+  (define args
+    (append (list "-sSL" "--fail" "-o" dest)
+            (append* (for/list ([h (in-list headers)]) (list "-H" h)))
+            (list url)))
+  (define code (apply system*/exit-code (curl-bin) args))
+  (unless (zero? code)
+    (error 'http-fetch "download failed (curl exit ~a): ~a" code url))
+  dest)
+
+(define (json->jsexpr/noerr b)
+  (with-handlers ([exn:fail? (lambda _ #f)]) (with-input-from-bytes b read-json)))
+
+(define (download-github-release-asset! source dest)
+  ;; 1) resolve the release (latest or by tag) via the API
+  ;; 2) find the asset by name in the release JSON
+  ;; 3) fetch the asset with Accept: application/octet-stream
+  (define m (regexp-match github-release-url? source))
+  (unless m (error 'download-github-asset! "not a github release URL"))
+  (define (grp i)
+    (define v (list-ref m i))
+    (and v (if (bytes? v) (bytes->string/utf-8 v) v)))
+  (define owner (grp 1))
+  (define repo (grp 2))
+  ;; group 3 = asset for the latest form; groups 4/5 = tag + asset for
+  ;; the tagged download forms; guard the absent branch with #f (grp
+  ;; returns #f for unmatched groups, not an error)
+  (define-values (tag asset-name)
+    (cond [(grp 3) (values #f (grp 3))]
+          [(and (grp 4) (grp 5)) (values (grp 4) (grp 5))]
+          [else (error 'download-github-asset!
+                       "cannot parse release URL: ~a" source)]))
+  (define token (or (gh-token)
+                    (error 'download-github-asset!
+                           "FILEBOUNDARY_GH_TOKEN is not set; the repository is private")))
+  (define auth (list (format "Authorization: Bearer ~a" token)))
+  (define api-base (format "https://api.github.com/repos/~a/~a/releases" owner repo))
+  (define rel-tmp (make-temporary-file "fb-rel~a.json"))
+  (dynamic-wind
+    (lambda () (void))
+    (lambda ()
+      (http-fetch-to-file!
+       (if tag (format "~a/tags/~a" api-base tag) (format "~a/latest" api-base))
+       rel-tmp auth)
+      (define rel-json (with-input-from-file rel-tmp read-json))
+      (unless (and (hash? rel-json) (hash-has-key? rel-json 'assets))
+        (error 'download-github-asset!
+               "release not reachable via API (check token scope / network)"))
+      (define asset
+        (for/first ([a (in-list (hash-ref rel-json 'assets))]
+                    #:when (equal? (hash-ref a 'name) asset-name))
+          a))
+      (unless asset
+        (error 'download-github-asset! "asset ~a not attached to the release"
+               asset-name))
+      (http-fetch-to-file! (hash-ref asset 'url) dest
+                           (append auth
+                                   (list "Accept: application/octet-stream"))))
+    (lambda ()
+      (with-handlers ([exn:fail? void]) (delete-file rel-tmp)))))
+
 (define (download-or-copy! source dest)
   (cond [(or (string-prefix? source "http://")
              (string-prefix? source "https://"))
-         (define in (get-pure-port (string->url source) #:redirections 5))
-         (define body (port->bytes in))
-         (close-input-port in)
-         (display-to-file body dest #:exists 'replace)
-         dest]
+         (if (and (gh-token)
+                  (regexp-match? github-release-url? source))
+             (download-github-release-asset! source dest)
+             (http-fetch-to-file! source dest (list)))]
         [else
          (copy-file source dest #:exists-ok? #t)
          dest]))

@@ -21,8 +21,21 @@
   "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
 
 (define-runtime-path repo-root "..")
-(define default-pad-path
+(define repo-default-pad
   (build-path repo-root "research" "t0" "pad_full.json"))
+;; default policy pad resolution: $FILEBOUNDARY_PAD, then pad_full.json
+;; beside the invoked location (packaged distributions), then the dev
+;; repository copy
+(define (default-pad-path)
+  (or (let ([env (getenv "FILEBOUNDARY_PAD")])
+        (and env (file-exists? env) (simple-form-path env)))
+      (let* ([exe (find-system-path 'run-file)]
+             [dir (path-only (simple-form-path exe))])
+        (define candidate
+          (if dir (build-path dir "pad_full.json") #f))
+        (and candidate (file-exists? candidate) candidate))
+      (and (file-exists? repo-default-pad) repo-default-pad)
+      repo-default-pad))
 
 (define (coded code message)
   (hash 'code code 'message message))
@@ -160,7 +173,7 @@
        (define in-path (hash-ref flags "--in" (lambda () #f)))
        (define out-path (hash-ref flags "--out" (lambda () #f)))
        (define pad-path (or (hash-ref flags "--pad" (lambda () #f))
-                            default-pad-path))
+                            (default-pad-path)))
        (if (and in-path out-path)
            (let ([report (run-decrypt in-path out-path pad-path)])
              (values 0 "ok"
