@@ -53,3 +53,5 @@ compiled/
 
 # Test artifacts
 test-output/
+windows/GeneratedBackend.hpp
+research/t0/dbg*
