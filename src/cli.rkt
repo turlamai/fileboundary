@@ -102,36 +102,52 @@
                  '() '())
          (bad-usage))]
     [(equal? command "scan")
-     (let ([max-files
-       (cond
-         [(= (length rest) 1) 1000]
-         [(and (= (length rest) 3)
-               (equal? (cadr rest) "--max-files"))
-          (string->number (caddr rest))]
-         [else #f])])
-       (if (and max-files
+     ;; arg shapes: scan <path> [--max-files N]
+     ;;             scan <path> [--max-files N] (--manifest-out PATH | --resume PATH)
+     (let-values ([(_pos flags)
+                   (split-flags rest '("--max-files" "--manifest-out" "--resume"))])
+       (define path (and (pair? _pos) (car _pos)))
+       (define max-files
+         (let ([raw (hash-ref flags "--max-files" (lambda () #f))])
+           (if raw (string->number raw) 1000)))
+       (define manifest-out (hash-ref flags "--manifest-out" (lambda () #f)))
+       (define resume-src (hash-ref flags "--resume" (lambda () #f)))
+       (define valid?
+         (and path
+              max-files
               (exact-integer? max-files)
-              (<= 1 max-files 100000))
-         (let-values ([(files skipped truncated?)
-                       (scan-tree (car rest) max-files)])
-           (define warnings
-             (append (if (> skipped 0)
-                         (list (coded "skippedEntries"
-                                      "Some entries were inaccessible or filesystem links."))
-                         '())
-                     (if truncated?
-                         (list (coded "limitReached"
-                                      "Scan stopped at the configured max-files limit."))
-                         '())))
-           (values (if (null? warnings) 0 1)
-                   (if (null? warnings) "ok" "partial")
-                   (hash 'files files
-                         'count (length files)
-                         'skippedCount skipped
-                         'truncated truncated?
-                         'readView "current-process"
-                         'recoveryVerdict "unverified")
-                   warnings '()))
+              (<= 1 max-files 100000)))
+       (if valid?
+         (let* ([prior
+                 (and resume-src
+                      (manifest->prior-table
+                       (read-manifest resume-src)))])
+           (let-values ([(files skipped truncated? reused)
+                         (scan-tree/resume path max-files prior)])
+             (define warnings
+               (append (if (> skipped 0)
+                           (list (coded "skippedEntries"
+                                        "Some entries were inaccessible or filesystem links."))
+                           '())
+                       (if truncated?
+                           (list (coded "limitReached"
+                                        "Scan stopped at the configured max-files limit."))
+                           '())))
+             (when (or manifest-out resume-src)
+               (write-manifest!
+                (or manifest-out resume-src)
+                (manifest->jsexpr
+                 (simplify-path (path->complete-path path))
+                 files skipped truncated? max-files reused)))
+             (values (if (null? warnings) 0 1)
+                     (if (null? warnings) "ok" "partial")
+                     (hash 'files (map (lambda (e) (hash-ref e 'record)) files)
+                           'count (length files)
+                           'skippedCount skipped
+                           'truncated truncated?
+                           'readView "current-process"
+                           'recoveryVerdict "unverified")
+                     warnings '())))
          (bad-usage)))]
     [(equal? command "doctor")
      (if (null? rest)

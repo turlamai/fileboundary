@@ -2,12 +2,14 @@
 
 ;; Read-only evidence collection. A recognizable signature is NOT plaintext validation.
 (require file/sha1
+         json
          racket/file
          racket/list
          racket/path)
 
-(provide inspect-file scan-tree classify-header
-         exn:fail:unsafe-scan-path?)
+(provide inspect-file scan-tree scan-tree/resume classify-header manifest->prior-table
+         exn:fail:unsafe-scan-path?
+         manifest->jsexpr write-manifest! read-manifest)
 
 (define (starts-with-bytes? input prefix)
   (and (>= (bytes-length input) (bytes-length prefix))
@@ -76,16 +78,28 @@
     #:mode 'binary))
 
 (define (scan-tree source [max-files 1000])
+  ;; clean-record projection: identical contract to before resume existed
+  (define-values (entries skipped truncated? _reused)
+    (scan-tree/resume source max-files #f))
+  (values (map (lambda (e) (hash-ref e 'record)) entries)
+          skipped
+          truncated?))
+
+;; Resume-aware scan (issue #4). prior maps ABSOLUTE path strings to a
+;; previous manifest's file entry. A file whose size AND mtime both match
+;; the prior entry reuses the recorded sha256/classification without
+;; re-reading content; anything else is inspected fresh. Entries are
+;; returned as {path mtimeSec record} hashes; path-sorted order is kept.
+(define (scan-tree/resume source max-files prior)
   (when (linked-path-component? source)
     (reject-linked-path 'scan-tree))
   (unless (and (exact-integer? max-files) (<= 1 max-files 100000))
     (raise-argument-error 'scan-tree "integer from 1 through 100000" max-files))
   (unless (memq (file-or-directory-type source #f) '(file directory))
     (error 'scan-tree "source must be an accessible regular file or directory, not a link"))
-  ;; Link-aware type checks keep leaf symlinks and linked directories out.
-  ;; Windows non-symlink reparse points require a separate OS-level check.
-  (define records '())
+  (define entries (list))
   (define skipped 0)
+  (define reused 0)
   (define truncated? #f)
   (define (walk path)
     (unless truncated?
@@ -99,9 +113,80 @@
              (unless truncated?
                (walk (build-path path child))))]
           [(file)
-           (if (>= (length records) max-files)
-               (set! truncated? #t)
-               (set! records (cons (inspect-file path) records)))]
+           (cond [(>= (length entries) max-files)
+                  (set! truncated? #t)]
+                 [else
+                  (define key (path->string (path->complete-path path)))
+                  (define prior-entry
+                    (and prior (hash-ref prior key #f)))
+                  (define size (file-size path))
+                  (define mtime (file-or-directory-modify-seconds path #f))
+                  (define reuse?
+                    (and prior-entry
+                         (= size (hash-ref prior-entry 'sizeBytes #f))
+                         (= mtime (hash-ref prior-entry 'mtimeSec #f))))
+                  (define record
+                    (if reuse?
+                        ;; reuse: copy every recorded field except the
+                        ;; per-artifact path/mtime guards
+                        (for/hash ([k (in-hash-keys prior-entry)]
+                                   #:unless (member k (list 'path 'mtimeSec)))
+                          (values k (hash-ref prior-entry k)))
+                        (inspect-file path)))
+                  (set! entries
+                        (cons (hash 'path key
+                                    'mtimeSec mtime
+                                    'record record)
+                              entries))
+                  (when reuse? (set! reused (add1 reused)))])]
           [else (set! skipped (add1 skipped))]))))
   (walk (path->complete-path source))
-  (values (reverse records) skipped truncated?))
+  (values (reverse entries) skipped truncated? reused))
+
+;; ---------- persistent manifest artifact (.fbmanifest.json) ----------
+;;
+;; Artifact fields include ABSOLUTE paths and mtimes -- sensitive
+;; metadata; per docs/security.md these files live outside the repository
+;; in operator-designated locations. The JSON envelope is deliberately
+;; unchanged by resume: the artifact carries the reused/refreshed
+;; accounting instead.
+
+(define manifest-schema-version 1)
+
+(define (entry->artifact-file e)
+  (hash-set (hash-ref e 'record)
+            'mtimeSec (hash-ref e 'mtimeSec)))
+
+(define (manifest->jsexpr root entries skipped truncated? max-files reused)
+  (hash 'schemaVersion manifest-schema-version
+        'kind "fb-manifest"
+        'root (path->string (path->complete-path root))
+        'maxFiles max-files
+        'truncated truncated?
+        'skippedCount skipped
+        'reusedCount reused
+        'files (for/list ([e entries])
+                 (hash-set (entry->artifact-file e)
+                           'path (hash-ref e 'path)))))
+
+(define (write-manifest! path jsexpr)
+  (make-parent-directory* path)
+  (with-output-to-file path
+    (lambda () (write-json jsexpr) (newline))
+    #:exists 'replace)
+  path)
+
+(define (read-manifest path)
+  (define j (with-input-from-file path read-json))
+  (unless (and (hash? j)
+               (equal? (hash-ref j 'schemaVersion #f)
+                       manifest-schema-version)
+               (equal? (hash-ref j 'kind #f) "fb-manifest")
+               (list? (hash-ref j 'files #f)))
+    (error 'read-manifest "not a FileBoundary manifest artifact: ~a" path))
+  j)
+
+;; prior table for scan-tree/resume: ABS path -> artifact file entry
+(define (manifest->prior-table j)
+  (for/hash ([f (in-list (hash-ref j 'files))])
+    (values (hash-ref f 'path) f)))
