@@ -34,7 +34,7 @@ racket src/cli.rkt update now
 
 每条命令向标准输出写一个版本化 JSON envelope（[契约](docs/cli-contract.md)）；机器可读输出即规范接口。
 
-扫描器会拒绝符号链接形式的扫描根路径，跳过目录中的文件/目录符号链接，并将跳过情况报告为 `partial`。显式传入含符号链接的路径（包括 `verify` 的输入）会返回退出码 `3` 和不泄露路径的 JSON 错误码 `unsafeScanPath`；路径不存在或无权访问仍返回 `runtimeError`。这只是路径级防护，**尚不能**保证覆盖所有 Windows 重解析点或并发替换链接的竞态；后续由 [#10](https://github.com/turinglambdaai/fileboundary/issues/10) 跟进。
+扫描器会拒绝符号链接形式的扫描根路径，跳过目录中的文件/目录符号链接，并将跳过情况报告为 `partial`。显式传入含符号链接的路径（包括 `verify` 的输入）会返回退出码 `3` 和不泄露路径的 JSON 错误码 `unsafeScanPath`；路径不存在或无权访问仍返回 `runtimeError`。这只是路径级防护，**尚不能**保证覆盖所有 Windows 重解析点或并发替换链接的竞态；后续由 [#10](https://github.com/turlamai/fileboundary/issues/10) 跟进。
 
 ### 授权导出验证（只读预览）
 
