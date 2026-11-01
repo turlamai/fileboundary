@@ -22,8 +22,8 @@ under the ADR-0006 mandate; nothing here mutates protection-system state.
 | Body encryption | XOR with a **512-byte repeating pad** indexed by absolute file offset mod 512 |
 | Pad scope | **policy-global** — the pad recovered from one file decrypts other files' prose (verified across docx + 25 MB PDF) |
 | Body content | a rebuilt zip: first entry's local header stripped (CD keeps lho=0), its content stored as a raw-deflate blob in the wrapper's metadata zone; all later entries + CD + EOCD intact |
-| Entry compression | raw deflate **with a preset dictionary** (`invalid distance too far back` without it) — the dictionary is a fixed constant inside the E-SafeNet client driver |
-| Offline status | pad 421/512 columns proven (`research/t0/pad.json`); `_rels/.rels` fully VERIFIED; document/settings identified as dictionary-dependent; the rest derailed on unproven pad columns |
+| Entry compression | **standard dictionary-free raw deflate**. The earlier preset-dictionary hypothesis was an artifact of an incomplete pad: with pad columns missing the decoder derails and zlib reports misleading errors. With the completed pad every entry inflates cleanly and CRC-verifies |
+| Offline status | **END-TO-END BREAK**: pad completed 512/512 offline (object-header ↔ xref cross-vote, `pad_full.json`); the retired PDF specimen fully recovered (29 pages, pypdf-verified, xref spot-check 126/126) with a semantic 512-byte head rebuild (`reconstruct_head.py`); see [README](README.md). The driver dictionary now only affects OOXML entry-level byte-exactness and the exact bytes of a wrapped file's first 512 bytes |
 
 Reproduced by: `python research/t0/build_pad.py` then
 `python research/t0/esafenet_decryptor.py <file> --pad=research/t0/pad.json`.
@@ -58,22 +58,12 @@ Record the filter stack and specimen inventory. No elevation side effects.
 Record the completed pad as `pad-full.json` **outside the repository**
 (containment rule: it is a recovery key).
 
-## Step 3 — Extract the preset dictionary
+## Step 3 — (OBSOLETE) dictionary extraction
 
-Three independent routes, cheapest first:
-
-1. **Config/driver scan**: locate the E-SafeNet install directory and its
-   driver/DLL files; search for the dictionary buffer passed to
-   `inflateInit2`/`uncompress`-style imports. A zlib dictionary is a plain
-   byte blob; candidates validate by decoding `word/document.xml` of a
-   twin into well-formed XML.
-2. **Memory read**: open a wrapped file in a whitelisted app; the filter's
-   decompressor holds the dictionary in memory. Dump the whitelisted
-   process (own process, owner machine) and scan for the same blob.
-3. **Reconstruct from references**: not needed if 1 or 2 succeeds.
-
-Validate the dictionary the same way as step 2.3: twin entries must reach
-`VERIFIED`, including byte-identity with the known plaintext twin.
+The preset-dictionary hypothesis was disproven on 2026-10-29: with the
+pad completed, every zip entry inflates as standard dictionary-free
+deflate and CRC-verifies. No driver access is required. This step is
+retained only as a record of the discarded hypothesis.
 
 ## Step 4 — Batch offline recovery
 

@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-28
-- **Deciders:** owner (turinglambdaai), explicit directive in session
+- **Deciders:** owner (turlamai), explicit directive in session
 - **Supersedes:** clause 4 of [ADR-0001](ADR-0001-project-scope-and-boundaries.md) (authorized mechanisms only; permanent prohibition list). All other ADR-0001 clauses remain in force.
 
 ## Context

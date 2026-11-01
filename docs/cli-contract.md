@@ -58,6 +58,11 @@ Run from the repository root on Windows with Racket CS 9.3, or use the packaged 
 | `racket src/cli.rkt scan <path> [--max-files N]` | Bounded read-only file metadata records; **no saved manifest** | 0 / 1 / 2 / 3 |
 | `racket src/cli.rkt doctor` | Bounded, read-only `fltmc` filters/instances checks | 0 / 1 / 2 / 3 |
 | `racket src/cli.rkt verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX]` | Comparison of an **already authorized** export; never decrypts and never returns `verified` | 1 (`unverified`), 4 (`failed`), 2 / 3 on errors |
+| `racket src/cli.rkt decrypt --in FILE --out FILE [--pad PATH]` | Decrypt an E-SafeNet-wrapped file with the policy pad: OOXML reassembled with per-entry CRC verification, PDF with semantic head rebuild + xref spot-check ([ADR-0006](decisions/ADR-0006-adversarial-recovery-mandate.md)) | 0, 3 (pad/format mismatch) |
+| `racket src/cli.rkt pad twin --plain FILE --cipher FILE --out FILE [--pad PATH]` | Recover a policy pad from an aligned plaintext/ciphertext twin pair (FIELD_PROTOCOL step 2); exit 1 with `padIncomplete` when columns remain unknown | 0, 1 (partial), 2 / 3 |
+| `racket src/cli.rkt update status` | Report running version, installed version and install root | 0, 2 / 3 on errors |
+| `racket src/cli.rkt update check [--manifest URL\|PATH]` | Fetch the release manifest (default: the GitHub Releases channel) and compare against the running version; the only implicitly networked command, operator-initiated ([ADR-0008](decisions/ADR-0008-release-channel-and-self-update.md)) | 0, 2 / 3 on errors |
+| `racket src/cli.rkt update apply --package PATH --manifest PATH [--url URL] [--root DIR]` | Verify the package hash, apply (full or guarded delta) into the install root, bump the `current` marker; `--url` downloads the package explicitly | 0, 4 (verification/guard failure), 2 / 3 on errors |
 
 CLI stdout contains only one JSON envelope. A zero exit code does **not** mean original ciphertext was decrypted: the scanner and diagnostics don't attempt it. The `verify` command conservatively reports `unverified` even after a trusted hash matches because independent format and reader checks are not performed.
 
@@ -93,7 +98,7 @@ These are git-ignored; artifacts live outside the repository ([security.md](secu
 A version response has these fields, with `invocationId` and `durationMs` generated at runtime. For **actual** evidence, use the Windows CI run linked from the PR or invoke the CLI locally:
 
 ```json
-{"schemaVersion":"1.0","command":"version","invocationId":"example-not-a-real-invocation","status":"ok","data":{"version":"0.1.0-dev","runtime":"Racket CS","interface":"headless","schemaVersion":"1.0"},"warnings":[],"errors":[],"durationMs":0}
+{"schemaVersion":"1.0","command":"version","invocationId":"example-not-a-real-invocation","status":"ok","data":{"version":"0.1.0+dev","runtime":"Racket CS","interface":"headless","schemaVersion":"1.0"},"warnings":[],"errors":[],"durationMs":0}
 ```
 
 Any future response/schema change must include a versioning review, test updates, migration notes for breaking changes, and corresponding README updates.

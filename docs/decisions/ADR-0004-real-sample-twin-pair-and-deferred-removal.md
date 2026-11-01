@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-27
-- **Deciders:** owner (turinglambdaai), explicit approval in session
+- **Deciders:** owner (turlamai), explicit approval in session
 - **Relates to:** [ADR-0003](ADR-0003-real-encrypted-sample-exception.md)
 
 ## Context

@@ -1,0 +1,548 @@
+#lang racket/base
+
+;; E-SafeNet wrapper decryption engine (T0 break, ADR-0006 mandate).
+;;
+;; Measured model (research/t0/README.md): the whole file is XORed with a
+;; 512-byte repeating pad keyed by absolute file offset; the wrapper
+;; overwrites the first zone+tail (=512) bytes with its own header +
+;; metadata zone; under the pad the body is a zip whose first local header
+;; is stripped (CD keeps lho=0, its data survives as a raw-deflate blob in
+;; the metadata zone). All compression is standard dictionary-free deflate.
+;;
+;; Read-only guarantee: originals are never modified; decrypted output
+;; goes only where the caller directs.
+
+(require json
+         racket/file
+         racket/list
+         racket/path
+         racket/port
+         racket/string
+         file/gunzip
+         "sha256.rkt")
+
+(provide bytes-find find-xref-table
+         load-pad
+         xor-pad
+         parse-wrapper
+         crc32-bytes
+         le16 le32
+         find-cd
+         inflate-raw
+         verify-entry
+         rebuild-ooxml-bytes
+         decrypt-ooxml
+         decrypt-pdf
+         twin-vote
+         default-pad-path)
+
+;; ---------- small helpers ----------
+
+(define (le16 b o)
+  (+ (bytes-ref b o) (* 256 (bytes-ref b (+ o 1)))))
+
+(define (le32 b o)
+  (+ (bytes-ref b o)
+     (* 256 (bytes-ref b (+ o 1)))
+     (* 65536 (bytes-ref b (+ o 2)))
+     (* 16777216 (bytes-ref b (+ o 3)))))
+
+(define (u16->bytes n) (integer->integer-bytes n 2 #f #f))
+(define (u32->bytes n) (integer->integer-bytes n 4 #f #f))
+
+(define re-eocd (byte-regexp #"PK\x05\x06"))
+(define re-cd (byte-regexp #"PK\x01\x02"))
+(define re-lfh (byte-regexp #"PK\x03\x04"))
+(define re-rec-num #px#"^[0-9]{1,6} 0 obj")
+(define re-page (byte-regexp #"/Type\x5cs*/Page(?![s])"))
+(define re-pages (byte-regexp #"/Type\x5cs*/Pages"))
+
+;; 'xref\r\n0 <count>\r\n' located by scanning 'xref' anchors and
+;; hand-checking the header bytes (control bytes stay out of regex
+;; patterns: byte-regexp with embedded CR LF miscompiles on large inputs)
+(define (find-xref-table s [start 0])
+  (for/first ([m (in-list (regexp-match-positions* (byte-regexp #"xref")
+                                                   s start))]
+              #:when (let* ([o (car m)]
+                            [n (bytes-length s)]
+                            [header-ok
+                             (and (<= (+ o 8) n)
+                                  (= (bytes-ref s (+ o 4)) 13)
+                                  (= (bytes-ref s (+ o 5)) 10)
+                                  (= (bytes-ref s (+ o 6)) 48)
+                                  (= (bytes-ref s (+ o 7)) 32))])
+                       (and header-ok
+                            (let loop ([i (+ o 8)] [acc 0])
+                              (cond [(>= i n) #f]
+                                    [(= (bytes-ref s i) 13) (> acc 0)]
+                                    [(and (<= 48 (bytes-ref s i))
+                                          (<= (bytes-ref s i) 57))
+                                     (loop (+ i 1)
+                                           (+ (* acc 10)
+                                              (- (bytes-ref s i) 48)))]
+                                    [else #f])))))
+    (let* ([o (car m)]
+           [count
+            (let loop ([i (+ o 8)] [acc 0])
+              (if (= (bytes-ref s i) 13)
+                  acc
+                  (loop (+ i 1) (+ (* acc 10) (- (bytes-ref s i) 48)))))])
+      ;; records start after the count's own CRLF terminator
+      (cons count
+            (+ o 8
+               (let loop ([i (+ o 8)] [d 0])
+                 (if (= (bytes-ref s i) 13) d (loop (+ i 1) (add1 d))))
+               2)))))
+
+(define (bytes-find hay pat [start 0])
+  (define m (regexp-match-positions pat hay start))
+  (and m (car (car m))))
+
+;; ---------- CRC32 (zip entry verification) ----------
+
+(define crc32-table
+  (let ([t (make-vector 256 0)])
+    (for ([i (in-range 256)])
+      (let loop ([c i] [k 0])
+        (cond [(= k 8) (vector-set! t i c)]
+              [(odd? c) (loop (bitwise-xor 3988292384
+                                           (arithmetic-shift c -1))
+                              (add1 k))]
+              [else (loop (arithmetic-shift c -1) (add1 k))])))
+    t))
+
+(define (crc32-bytes b)
+  (bitwise-xor
+   4294967295
+   (for/fold ([crc 4294967295])
+             ([x (in-bytes b)])
+     (bitwise-and
+      4294967295
+      (bitwise-xor (arithmetic-shift crc -8)
+                   (vector-ref crc32-table
+                               (bitwise-and 255 (bitwise-xor crc x))))))))
+
+;; ---------- pad ----------
+
+(define jnull (json-null))
+
+;; load a pad JSON ({pad: [byte|null x512]}); missing columns omitted
+(define (load-pad path)
+  (define j (with-input-from-file path read-json))
+  (for/hash ([v (in-list (hash-ref j 'pad))]
+             [c (in-naturals)]
+             #:unless (eq? v jnull))
+    (values c v)))
+
+(define (parse-wrapper ct)
+  (unless (>= (bytes-length ct) 8)
+    (error 'parse-wrapper "file too short"))
+  (unless (bytes=? (subbytes ct 0 4) #"\x62\x14\x23\x65")
+    (error 'parse-wrapper "not an E-SafeNet wrapper (bad magic)"))
+  (values (le16 ct 4) (le16 ct 6)))
+
+(define (xor-pad ct pad)
+  (define pat (make-bytes 512))
+  (for ([c (in-range 512)])
+    (bytes-set! pat c (hash-ref pad c 0)))
+  (define n (bytes-length ct))
+  (define out (make-bytes n))
+  (for ([base (in-range 0 n 512)])
+    (define span (min 512 (- n base)))
+    (for ([i (in-range span)])
+      (bytes-set! out (+ base i)
+                  (bitwise-xor (bytes-ref ct (+ base i))
+                               (bytes-ref pat i)))))
+  out)
+
+;; ---------- zip container handling ----------
+
+(define (parse-cd s cd-off n-total)
+  (let loop ([o cd-off] [acc '()] [left n-total])
+    (cond [(zero? left) (values (reverse acc) o)]
+          [(> (+ o 46) (bytes-length s))
+           (error 'parse-cd "truncated CD entry at ~a" o)]
+          [(not (bytes=? (subbytes s o (+ o 4)) #"PK\x01\x02"))
+           (error 'parse-cd "bad CD entry magic at ~a" o)]
+          [else
+           (define e (hash 'ver-need (le16 s (+ o 6))
+                           'flags (le16 s (+ o 8))
+                           'method (le16 s (+ o 10))
+                           'mtime (le16 s (+ o 12))
+                           'mdate (le16 s (+ o 14))
+                           'crc (le32 s (+ o 16))
+                           'csize (le32 s (+ o 20))
+                           'usize (le32 s (+ o 24))
+                           'name (subbytes s (+ o 46)
+                                           (+ o 46 (le16 s (+ o 28))))
+                           'lho (le32 s (+ o 42))
+                           'tail (+ (le16 s (+ o 30)) (le16 s (+ o 32)))))
+           (loop (+ o 46 (bytes-length (hash-ref e 'name))
+                    (hash-ref e 'tail))
+                 (cons e acc) (sub1 left))])))
+
+;; locate EOCD + CD; stored offset first, chain-walk fallback when pad
+;; columns corrupted the stored fields. Returns (values eocd entries n)
+(define (find-cd s)
+  (define n (bytes-length s))
+  (define win (max 0 (- n 65536)))
+  ;; EOCD is addressed by the position of its 'PK' signature
+  ;; (fields are relative to the signature start, as in any zip reader)
+  (define eocd
+    (for/first ([m (in-list (reverse
+                              (regexp-match-positions* re-eocd s win n)))]
+                #:when (<= (+ (car m) 22) n))
+      (car m)))
+  (unless eocd (error 'find-cd "no EOCD under this pad"))
+  (define n-total (le16 s (+ eocd 10)))
+  (define (try-at off)
+    (with-handlers ([exn:fail? (lambda _ #f)])
+      (define-values (entries end) (parse-cd s off n-total))
+      (and (= end eocd) entries)))
+  (define entries
+    (or (try-at (le32 s (+ eocd 16)))
+        (for/first ([m (in-list (reverse
+                                 (regexp-match-positions* re-cd s 0 eocd)))]
+                    #:when (try-at (car m)))
+          (try-at (car m)))))
+  (unless entries (error 'find-cd "no valid CD chain under this pad"))
+  (values eocd entries n-total))
+
+;; inflate a raw deflate stream (file/gunzip's inflate is raw-deflate,
+;; exactly the zip entry format); CRC/length gates live in verify-entry
+(define (inflate-raw data crc usize)
+  (define out (open-output-bytes))
+  (inflate (open-input-bytes data) out)
+  (get-output-bytes out))
+
+(define (entry-data-span s e)
+  (define li (hash-ref e 'lho))
+  (define nl (le16 s (+ li 26)))
+  (define el (le16 s (+ li 28)))
+  (values (+ li 30 nl el) (+ li 30 nl el (hash-ref e 'csize))))
+
+;; inflate + length + CRC gate for one entry; blob overrides the data
+;; span (used for the stripped first entry)
+(define (verify-entry s e [blob #f])
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (hash 'ok #f 'why (exn-message exn)))])
+    (define data
+      (or blob
+          (let-values ([(a b) (entry-data-span s e)])
+            (subbytes s a b))))
+    (define out
+      (case (hash-ref e 'method)
+        [(8) (inflate-raw data (hash-ref e 'crc) (hash-ref e 'usize))]
+        [(0) data]
+        [else (error 'verify-entry "unsupported method ~a"
+                     (hash-ref e 'method))]))
+    (cond [(not (= (bytes-length out) (hash-ref e 'usize)))
+           (hash 'ok #f 'why "length mismatch")]
+          [(not (= (crc32-bytes out) (hash-ref e 'crc)))
+           (hash 'ok #f 'why "crc mismatch")]
+          [else (hash 'ok #t 'why "" 'data out)])))
+
+;; ---------- OOXML rebuild ----------
+
+;; fresh local headers (extra = 0) + verbatim deflate data + fresh CD and
+;; EOCD; the stripped first entry stores its raw deflate blob
+(define (rebuild-ooxml-bytes s entries first-blob)
+  (define first (car entries))
+  (define out (open-output-bytes))
+  (define offs (make-hash))
+  (define pos 0)
+  (for ([e entries])
+    (define is-first (< (hash-ref e 'lho) 512))
+    (define-values (data crc csize)
+      (if is-first
+          (values first-blob (hash-ref first 'crc)
+                  (hash-ref first 'csize))
+          (let*-values ([(li) (hash-ref e 'lho)]
+                        [(a b) (entry-data-span s e)])
+            (values (subbytes s a b) (hash-ref e 'crc)
+                    (hash-ref e 'csize)))))
+    (define name (hash-ref e 'name))
+    (hash-set! offs name pos)
+    (write-bytes (bytes-append #"PK\x03\x04"
+                                   (u16->bytes (hash-ref e 'ver-need))
+                                   (u16->bytes (hash-ref e 'flags))
+                                   (u16->bytes (hash-ref e 'method))
+                                   (u16->bytes (hash-ref e 'mtime))
+                                   (u16->bytes (hash-ref e 'mdate))
+                                   (u32->bytes crc)
+                                   (u32->bytes csize)
+                                   (u32->bytes (hash-ref e 'usize))
+                                   (u16->bytes (bytes-length name))
+                                   (u16->bytes 0)
+                                   name data) out)
+    (set! pos (+ pos 30 (bytes-length name) (bytes-length data))))
+  (define cd-start pos)
+  (for ([e entries])
+    (define is-first (< (hash-ref e 'lho) 512))
+    (define name (hash-ref e 'name))
+    (write-bytes (bytes-append #"PK\x01\x02"
+                                   (u16->bytes 20)
+                                   (u16->bytes (hash-ref e 'ver-need))
+                                   (u16->bytes (hash-ref e 'flags))
+                                   (u16->bytes (hash-ref e 'method))
+                                   (u16->bytes (hash-ref e 'mtime))
+                                   (u16->bytes (hash-ref e 'mdate))
+                                   (u32->bytes (hash-ref e 'crc))
+                                   (u32->bytes (if is-first
+                                                   (hash-ref first 'csize)
+                                                   (hash-ref e 'csize)))
+                                   (u32->bytes (hash-ref e 'usize))
+                                   (u16->bytes (bytes-length name))
+                                   (u16->bytes 0) (u16->bytes 0)
+                                   (u16->bytes 0) (u16->bytes 0)
+                                   (u32->bytes (hash-ref offs name))
+                                   name) out))
+  (define cd-size (- pos cd-start))
+  (write-bytes (bytes-append #"PK\x05\x06"
+                                 (u16->bytes 0) (u16->bytes 0)
+                                 (u16->bytes (length entries))
+                                 (u16->bytes (length entries))
+                                 (u32->bytes cd-size)
+                                 (u32->bytes cd-start)
+                                 (u16->bytes 0)) out)
+  (get-output-bytes out))
+
+(define (decrypt-ooxml ct pad)
+  ;; decrypt + verify every entry + reassemble a standalone OOXML file
+  (define s (xor-pad ct pad))
+  (define-values (_eocd entries _n) (find-cd s))
+  (define first (car entries))
+  (unless (< (hash-ref first 'lho) 512)
+    (error 'decrypt-ooxml "first entry local header not stripped"))
+  (define first-pk (bytes-find s re-lfh 512))
+  (unless first-pk
+    (error 'decrypt-ooxml "no intact local header under this pad"))
+  (define blob (subbytes s (- first-pk (hash-ref first 'csize)) first-pk))
+  (define verified 0)
+  (define report
+    (for/list ([e entries])
+      (define v (verify-entry s e (and (< (hash-ref e 'lho) 512) blob)))
+      (when (hash-ref v 'ok) (set! verified (add1 verified)))
+      (hash 'name (bytes->string/utf-8 (hash-ref e 'name) #\?)
+            'crcOk (hash-ref v 'ok))))
+  (unless (= verified (length entries))
+    (error 'decrypt-ooxml
+           "only ~a/~a entries verified; pad does not match this file"
+           verified (length entries)))
+  (hash 'entries report
+        'verified verified
+        'total (length entries)
+        'bytes (rebuild-ooxml-bytes s entries blob)))
+
+;; ---------- PDF rebuild ----------
+
+(define (zero-pad10 n)
+  (define str (number->string n))
+  (string-append (make-string (- 10 (string-length str)) #\0) str))
+
+;; xref-driven page enumeration (never crosses object boundaries)
+(define (page-objects-from-xref s body-start)
+  (define hdr (find-xref-table s body-start))
+  (unless hdr (error 'decrypt-pdf "no classic xref table header"))
+  (define count (car hdr))
+  (define tstart (cdr hdr))
+  (for/list ([k (in-range count)]
+             #:when (let* ([rp (+ tstart (* 20 k))]
+                           [rec-ok
+                            (and (<= (+ rp 20) (bytes-length s))
+                                 (= (bytes-ref
+                                     (subbytes s rp (+ rp 20)) 17)
+                                    (char->integer #\n)))]
+                           [off
+                            (and rec-ok
+                                 (string->number
+                                  (bytes->string/utf-8
+                                   (subbytes s rp (+ rp 10)))))])
+                      (and off
+                           (>= off body-start)
+                           (regexp-match? re-rec-num
+                                          (subbytes s off (+ off 16)))
+                           (let ([obj-end (or (bytes-find s #"endobj" off)
+                                              off)])
+                             (define seg
+                               (subbytes s off
+                                         (min (+ obj-end 6)
+                                              (bytes-length s))))
+                             (and (regexp-match? re-page seg)
+                                  (not (regexp-match? re-pages seg))
+                                  #t)))))
+    k))
+
+(define (decrypt-pdf ct pad)
+  ;; decrypt + verify + semantic head rebuild for the measured layout
+  ;; family (a page object straddles the 512-byte overwrite boundary)
+  (define s (xor-pad ct pad))
+  (define body-start 512)
+  (define hdr (find-xref-table s body-start))
+  (unless hdr (error 'decrypt-pdf "no classic xref table header"))
+  (define count (car hdr))
+  (define tstart (cdr hdr))
+  ;; the straddler is the LAST record with offset < body-start: earlier
+  ;; low-offset objects were fully overwritten; this one's dict tail
+  ;; survives from body-start (offsets increase monotonically)
+  (define straddler-hit
+    (for/fold ([hit #f])
+              ([k (in-range count)]
+               #:when (<= (+ tstart (* 20 k) 20) (bytes-length s)))
+      (define rec (subbytes s (+ tstart (* 20 k))
+                            (+ tstart (* 20 k) 20)))
+      (if (and (= (bytes-ref rec 17) (char->integer #\n))
+               (< (string->number (bytes->string/utf-8 (subbytes rec 0 10)))
+                  body-start))
+          (cons k (string->number (bytes->string/utf-8 (subbytes rec 0 10))))
+          hit)))
+  (unless straddler-hit
+    (error 'decrypt-pdf "no object straddles the overwrite boundary"))
+  (define straddler (car straddler-hit))
+  (define straddler-off (cdr straddler-hit))
+  ;; the rebuilt head is exactly as long as the straddler's xref offset,
+  ;; so its record keeps pointing at the right place without patching
+  (define head-prefix-len straddler-off)
+  (define obj-end
+    (or (bytes-find s #"endobj" body-start)
+        (error 'decrypt-pdf "straddler endobj not found")))
+  (define obj-end-abs (+ obj-end 8))
+  (define straddler-tail (subbytes s body-start obj-end-abs))
+  ;; the surviving tail must identify the object as a page (its /Type sat
+  ;; in the lost prefix; /StructParents or /Contents survive)
+  (unless (or (regexp-match? #px#"/StructParents" straddler-tail)
+              (regexp-match? #px#"/Contents" straddler-tail))
+    (error 'decrypt-pdf "straddling object is not a page"))
+  (define prefix
+    (string->bytes/utf-8
+     (format "~a 0 obj\r\n<</Type/Page/Parent 2 0 R/Resources<<"
+             straddler)))
+  (define fill
+    (- (- body-start head-prefix-len) (bytes-length prefix) 2))
+  (unless (>= fill 0)
+    (error 'decrypt-pdf "no room for straddler prefix"))
+  (define straddler-full
+    (bytes-append prefix (make-bytes fill (char->integer #\space))
+                  #"/X" straddler-tail))
+  (define pages
+    (for/list ([k (page-objects-from-xref s body-start)]
+               #:unless (= k straddler))
+      k))
+  (define kids (cons straddler pages))
+  ;; rebuilt head: header + catalog + pages tree, padded so the straddler
+  ;; lands exactly at its xref offset (430 in the measured family)
+  (define head1
+    #"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+  (define off1 15)
+  (define off2 (bytes-length head1))
+  (define head2
+    (string->bytes/utf-8
+     (format "2 0 obj\n<< /Type /Pages /Kids[~a] /Count ~a >>\nendobj\n"
+             (string-join
+              (for/list ([k kids]) (format "~a 0 R" k)) " ")
+             (length kids))))
+  (unless (<= (+ (bytes-length head1) (bytes-length head2))
+              head-prefix-len)
+    (error 'decrypt-pdf "rebuilt head does not fit before the straddler"))
+  (define head
+    (bytes-append head1 head2
+                  (make-bytes (- head-prefix-len
+                                 (bytes-length head1)
+                                 (bytes-length head2)
+                                 1)
+                              (char->integer #\#))
+                  #"\n"))
+  ;; patch xref records 1 and 2 to the rebuilt offsets (record k keeps
+  ;; pointing at its original offset, which the assembly preserves)
+  (define s2 (bytes-copy s))
+  (for ([spec (list (cons 1 off1) (cons 2 off2))])
+    (define rp (+ tstart (* 20 (car spec))))
+    (bytes-copy! s2 rp
+                 (string->bytes/utf-8
+                  (string-append (zero-pad10 (cdr spec)) " 00000 n\r\n"))))
+  ;; assemble: head fills 0..head-prefix-len, the straddler prefix+filler
+  ;; fills up to body-start, then the straddler tail and the rest
+  (define original
+    (bytes-append head
+                  (subbytes straddler-full
+                            0
+                            (- (bytes-length straddler-full)
+                               (bytes-length straddler-tail)))
+                  straddler-tail
+                  (subbytes s2 obj-end-abs)))
+  (unless (= (bytes-length original) (bytes-length ct))
+    (error 'decrypt-pdf "assembled length mismatch: ~a vs ~a"
+           (bytes-length original) (bytes-length ct)))
+  ;; xref spot-check in the original coordinate system: walk every
+  ;; classic table (arithmetically — no control bytes in patterns) and
+  ;; verify each 'n' record's offset lands on an object header
+  (define checked 0)
+  (define bad 0)
+  (let loop-table ([search-from (max 0 (- (bytes-length original) 65536))])
+    (define hdr (find-xref-table original search-from))
+    (when hdr
+      (define t-count (car hdr))
+      (define t-start (cdr hdr))
+      (for ([k (in-range t-count)]
+            #:when (<= (+ t-start (* 20 k) 20) (bytes-length original)))
+        (define rp (+ t-start (* 20 k)))
+        (define rec (subbytes original rp (+ rp 20)))
+        (when (= (bytes-ref rec 17) (char->integer #\n))
+          (define off
+            (string->number (bytes->string/utf-8 (subbytes rec 0 10))))
+          (when (and off (>= off 512))
+            (set! checked (add1 checked))
+            (unless (regexp-match? re-rec-num
+                                   (subbytes original off (+ off 32)))
+              (set! bad (add1 bad))))))
+      (loop-table (+ t-start (* 20 t-count)))))
+  (hash 'bytes original
+        'xrefChecked checked
+        'xrefBad bad
+        'headRebuilt #t
+        'coverObject straddler
+        'pages (length kids)))
+
+;; ---------- pad from a known-plaintext twin ----------
+
+;; Twin protocol (FIELD_PROTOCOL step 2): the operator saves one file via a
+;; whitelisted app (plaintext view) and copies the same file via a non-
+;; whitelisted tool (wrapped ciphertext view). Voting per column over the
+;; aligned pair recovers the policy pad; a few KB of twin covers every
+;; column many times over.
+(define (twin-vote plain cipher [base-pad (hash)])
+  (unless (bytes? plain) (set! plain (string->bytes/utf-8 plain)))
+  (unless (bytes? cipher) (set! cipher (string->bytes/utf-8 cipher)))
+  (define n (min (bytes-length plain) (bytes-length cipher)))
+  (define votes (make-hash))
+  (for ([o (in-range n)])
+    (define col (modulo o 512))
+    (define h (hash-ref! votes col make-hash))
+    (hash-set! h (bitwise-xor (bytes-ref cipher o) (bytes-ref plain o))
+               (add1 (hash-ref h
+                              (bitwise-xor (bytes-ref cipher o)
+                                           (bytes-ref plain o))
+                              0))))
+  (define pad
+    (make-hash (for/list ([c (in-range 512)])
+                 (cons c (hash-ref base-pad c #f)))))
+  (for ([(col vh) (in-hash votes)]
+        #:when (>= (hash-count vh) 1))
+    (define total (for/sum ([(_ c) (in-hash vh)]) c))
+    (define best (argmax cdr (hash->list vh)))
+    ;; unanimous-ish majority across all votes for this column
+    (when (>= (cdr best) (max 3 (inexact->exact (floor (* 0.95 total)))))
+      (hash-set! pad col (car best))))
+  (define covered
+    (for/sum ([c (in-range 512)] #:when (hash-ref pad c #f)) 1))
+  (hash 'pad pad 'covered covered 'missing
+        (for/list ([c (in-range 512)] #:unless (hash-ref pad c #f)) c)))
+
+;; ---------- default pad location (dev tree) ----------
+
+(require racket/runtime-path)
+(define-runtime-path repo-default-pad
+  "../../research/t0/pad_full.json")
+
+(define (default-pad-path)
+  repo-default-pad)

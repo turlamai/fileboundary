@@ -39,15 +39,21 @@ Headlines (all measured on the committed twin + the retired PDF specimen):
 - The body is a rebuilt zip: first local header stripped (CD lho=0), its
   content relocated into the wrapper's metadata zone as a raw-deflate blob;
   everything else intact.
-- Entry payloads are deflate **with a preset dictionary** — a fixed
-  constant inside the client driver; small entries that avoid dictionary
-  references decrypt outright (one entry already VERIFIED offline with the
-  pad at 421/512 proven columns).
-- Consequence: strategy decision S1/S4 resolved — the backlog is
-  offline-decryptable once the pad is completed (minutes, from minted
-  twins on the operator machine) and the driver's dictionary blob is
-  extracted (T2-lite). T1 ride-along remains the fastest first-recovery
-  path and also produces the known-plaintext pairs.
+- Entry payloads are **standard dictionary-free deflate**. (The earlier
+  preset-dictionary reading was an incomplete-pad artifact: missing pad
+  columns derail the decoder into misleading zlib errors. With the pad
+  completed, the wrapped OOXML twin recovers fully — all 12 entries
+  CRC-verified.)
+- Consequence (updated 2026-10-29): the break is **end-to-end offline,
+  all formats**. The pad completed 512/512 from wrapped files' own
+  structure (object headers × xref records cross-vote), a full 25 MB PDF
+  specimen was recovered and verified (pypdf, 28 pages, cover restored;
+  see [../research/t0/README.md](../research/t0/README.md)), and the
+  wrapped OOXML twin fully recovers — all 12 entries CRC-verified with
+  the content fingerprint confirmed. The earlier driver-dictionary
+  dependency was disproven (an incomplete-pad artifact). T1/T2 remain
+  useful for speed and for files whose pad differs by policy revision,
+  but are no longer on the critical path.
 
 ## Attack surface
 

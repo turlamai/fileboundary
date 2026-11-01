@@ -2,7 +2,7 @@
 
 - **Status:** accepted
 - **Date:** 2026-10-27
-- **Deciders:** owner (turinglambdaai), explicit approval in session
+- **Deciders:** owner (turlamai), explicit approval in session
 
 ## Context
 
