@@ -11,12 +11,12 @@
          "engine/diagnostics.rkt"
          "engine/recovery.rkt"
          "engine/update.rkt"
-         "engine/decrypt.rkt")
+         "engine/decrypt.rkt"
+         "version.rkt")
 
 (provide run-cli)
 
 (define schema-version "1.0")
-(define product-version "0.2.0+dev")
 (define default-manifest-url
   "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
 
