@@ -141,10 +141,17 @@ void MainWindow::Verify_Click(
   RunVerifyAsync();
 }
 
+void MainWindow::Decrypt_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  RunDecryptAsync();
+}
+
 void MainWindow::SetBusyUi(bool busy) {
   ScanButton().IsEnabled(!busy && backend_ && backend_->running());
   DoctorButton().IsEnabled(!busy && backend_ && backend_->running());
   VerifyButton().IsEnabled(!busy && backend_ && backend_->running());
+  DecryptButton().IsEnabled(!busy && backend_ && backend_->running());
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
     StatusBar().Message(L"Read-only operation running...");
@@ -168,6 +175,42 @@ void MainWindow::RunScanAsync() {
   try {
     rivet_app::API api(*backend);
     (void)api.scan_summary_async(path,
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) window->ShowResult(message);
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
+}
+
+void MainWindow::RunDecryptAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  auto const input = winrt::to_string(DecryptInputBox().Text());
+  auto const output = winrt::to_string(DecryptOutputBox().Text());
+  if (input.empty() || output.empty()) {
+    SetErrorUi("Enter both the encrypted input path and the output path");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.decrypt_summary_async(input, output,
         [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
           try {
             auto message = result.get();

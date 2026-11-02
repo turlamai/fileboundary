@@ -7,6 +7,29 @@
   "records": [],
   "rpcs": [
     {
+      "arguments": [
+        {
+          "name": "input",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "output",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "name": "decrypt-summary",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
       "arguments": [],
       "name": "doctor-summary",
       "result": {
@@ -31,7 +54,6 @@
       }
     },
     {
-      "name": "verify-export-summary",
       "arguments": [
         {
           "name": "original",
@@ -48,12 +70,13 @@
           }
         }
       ],
+      "name": "verify-export-summary",
       "result": {
         "kind": "scalar",
         "name": "String"
       }
     }
   ],
-  "states": [],
-  "rvt-protocol": 1
+  "rvt-protocol": 1,
+  "states": []
 }

@@ -26,7 +26,17 @@
                 <Button x:Name="VerifyButton" Content="Check Export / 验证导出"
                         AutomationProperties.AutomationId="verify-export-button"
                         IsEnabled="False" Click="Verify_Click" />
+                <Button x:Name="DecryptButton" Content="Decrypt / 解密"
+                        AutomationProperties.AutomationId="decrypt-button"
+                        IsEnabled="False" Click="Decrypt_Click" />
             </StackPanel>
+            <TextBlock Text="Encrypted input path / 加密文件路径" />
+            <TextBox x:Name="DecryptInputBox"
+                     AutomationProperties.AutomationId="decrypt-input-path" />
+            <TextBlock Text="Decrypted output path / 解密输出路径" />
+            <TextBox x:Name="DecryptOutputBox"
+                     PlaceholderText="D:\Recovered\output.docx"
+                     AutomationProperties.AutomationId="decrypt-output-path" />
             <TextBlock Text="Results / 结果" FontWeight="SemiBold" FontSize="19" />
             <TextBlock x:Name="OutputText" TextWrapping="Wrap"
                        AutomationProperties.AutomationId="scan-result"
