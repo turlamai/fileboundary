@@ -29,11 +29,23 @@ raco rivet verify
 
 ## Authorized-export UI (development preview)
 
-The FileBoundary WinUI window now has two path boxes: the first selects the encrypted original (also used for scanning), and the second selects an **already authorized exported file**. `Check Export` calls `verify-export-summary` over Rivet's typed, asynchronous RPC. It uses the same `assess-authorized-export` Racket engine as the CLI and displays `FAILED` or `UNVERIFIED`, never `verified`. No path, key material or document contents are returned to the UI in the RPC summary. The app never exports or decrypts files. Full acceptance instructions: [Windows QA](windows-qa.md).
+The FileBoundary WinUI window now has two path boxes: the first selects the encrypted original (also used for scanning), and the second selects an **already authorized exported file**. `Check Export` calls `verify-export-summary` over Rivet's typed, asynchronous RPC. It uses the same `assess-authorized-export` Racket engine as the CLI and displays `FAILED` or `UNVERIFIED`, never `verified`. No path, key material or document contents are returned to the UI in the RPC summary. The export comparison never modifies files. Full acceptance instructions: [Windows QA](windows-qa.md).
+
+## Decrypt panel (development preview)
+
+The `Decrypt` panel drives the **same engine entry as `racket src/cli.rkt decrypt`**: the operator supplies the wrapped input and the output destination, and `decrypt-summary` returns per-entry CRC verdicts (entry names + booleans + counters, OOXML) or head/xref reconstruction counters (PDF) over Rivet's typed RPC. File contents never cross the RPC; only the output file *name* is echoed.
+
+The policy pad is operator key material that lives **outside** the repository and the package. The panel resolves it from `$FILEBOUNDARY_PAD` (or `pad_full.json` beside the invoked backend); with neither present the RPC fails with a bounded diagnostic instead of guessing. If the app is launched from the shell, set the variable first:
+
+```powershell
+$env:FILEBOUNDARY_PAD = "D:\keys\pad_full.json"
+```
+
+Acceptance: decrypt a wrapped fixture, confirm every entry reports `crcOk: true` (or `xrefBad: 0` for PDF), open the output in a strict consumer (e.g. Explorer's zip view), and confirm the original file's bytes and timestamps are unchanged (read-only guarantee).
 
 ## Not yet supported
 
-No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
+No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, pad-twin recovery panel, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
 
 ## Architecture note
 

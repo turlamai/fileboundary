@@ -1,6 +1,6 @@
 # FileBoundary — Windows hands-on acceptance (developer preview)
 
-**Status: not a standalone E-SafeNet decryptor.** This test checks the packaged Windows GUI, read-only detection, and comparison against a **separately, officially authorized** exported file. Direct decryption of existing E-SafeNet ciphertext is not implemented.
+**Status: authorized-scope decryption only.** This test checks the packaged Windows GUI, read-only detection, comparison against a **separately, officially authorized** exported file, and — where the operator owns the policy pad and is authorized to recover that content — decryption of wrapped files per [ADR-0006](decisions/). The GUI never bypasses the product's protections; the pad is operator key material that is not shipped with the package.
 
 ## Download and launch
 
@@ -18,6 +18,21 @@
    - `FAILED` means the candidate remains recognized as E-SafeNet-wrapped, or (in the CLI) mismatches a trusted plaintext baseline.
    - `UNVERIFIED` means no clear blocker was found, but it is **not** a statement of successful decryption.
    - The GUI creates **no** exported plaintext, alters **no** source file, and does **not** bypass the product's protections.
+
+## Controlled decryption (pad available, ADR-0006 scope)
+
+Only where recovery of the specific content is authorized **and** the operator owns the policy pad:
+
+1. Set the pad for the session before launching the app (the package never contains pad material):
+   ```powershell
+   $env:FILEBOUNDARY_PAD = "D:\keys\pad_full.json"
+   ```
+2. Put the wrapped input path in the **Decrypt** panel's first box and the output destination in the second. Select **Decrypt**.
+3. Acceptance:
+   - OOXML (`kind: "ooxml"`): `verified` equals `total` and every entry reports `crcOk: true`; `output` names the written file.
+   - PDF (`kind: "pdf"`): `headRebuilt: true` and `xrefBad: 0`.
+   - Open the output in a strict consumer (Explorer zip view / Office / a PDF reader) — the original stays byte-identical and untouched.
+   - With no pad configured, the panel must show a bounded error (no partial output file), never a guess.
 
 ## Controlled twin sample
 
