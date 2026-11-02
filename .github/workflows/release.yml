@@ -1,0 +1,177 @@
+name: FileBoundary release
+
+# Tag-triggered release train (issue #9, ADR-0008): build → package →
+# checksum → smoke → publish a private GitHub Release with English notes
+# and evidence. `workflow_dispatch` runs the identical pipeline in
+# dry-run mode (everything except publishing) so the train itself is
+# CI-proven before any tag is cut. No installer: ADR-0008 supersedes it
+# with the portable package + explicit self-update channel.
+
+on:
+  push:
+    tags: ['v*']
+  # dispatch = dry run by construction: the publish step is gated on
+  # tag pushes only, so a manual run builds, packages, smokes and keeps
+  # the artifacts as workflow artifacts without publishing anything
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release / Racket CS 9.3 + WinUI 3
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      # set in the version step below
+      VERSION: ''
+      SHORT_SHA: ''
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Racket CS 9.3
+        uses: Bogdanp/setup-racket@v1.15
+        with:
+          architecture: x64
+          distribution: full
+          variant: CS
+          version: '9.3'
+
+      - name: Install pinned Rivet v0.13.0
+        shell: pwsh
+        run: |
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
+          if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
+
+      - name: Resolve version and enforce the tag contract
+        shell: pwsh
+        run: |
+          $rktd = Get-Content -LiteralPath rivet.rktd -Raw
+          if ($rktd -notmatch '\(version \. "([0-9]+\.[0-9]+\.[0-9]+)"\)') {
+            throw "cannot parse version from rivet.rktd"
+          }
+          $version = $Matches[1]
+          $shortSha = "${{ github.sha }}".Substring(0, 7)
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "SHORT_SHA=$shortSha" | Out-File -FilePath $env:GITHUB_ENV -Append
+          if ("${{ github.event_name }}" -eq 'push') {
+            $tag = "${{ github.ref_name }}"
+            if ($tag -ne "v$version") {
+              throw "tag $tag does not match rivet.rktd version $version — the tag contract requires v<version>"
+            }
+          }
+          Write-Output "Release version: v$version (build $shortSha)"
+
+      - name: Build and package
+        shell: pwsh
+        run: |
+          raco rivet build
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary native host build failed" }
+          raco rivet package
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package failed" }
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination dist/fileboundary-windows-x64/THIRD_PARTY_NOTICES.md
+          raco rivet verify
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package verification failed" }
+
+      - name: Build release artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/release | Out-Null
+          $version = $env:VERSION
+          # source distribution (CLI requires Racket CS 9.3; documented)
+          git archive --format=tar.gz --prefix="FileBoundary-v$version/" -o "dist/release/FileBoundary-v$version-source.tar.gz" HEAD
+          if ($LASTEXITCODE -ne 0) { throw "source tarball failed" }
+          # update-channel full package + release manifest (ADR-0008)
+          python tools/make_update_manifest.py --dir dist/fileboundary-windows-x64 --version $version --commit $env:SHORT_SHA --out dist/release --channel stable --package-url-base "https://github.com/${{ github.repository }}/releases/download/v$version/"
+          if ($LASTEXITCODE -ne 0) { throw "update manifest failed" }
+          # versioned portable zip + SHA256SUMS + per-file sidecars
+          pwsh tools/make_portable_zip.ps1 -AppDir dist/fileboundary-windows-x64 -Version $version -OutDir dist/release
+          if ($LASTEXITCODE -ne 0) { throw "portable packaging failed" }
+          Get-ChildItem dist/release | Format-Table Name, Length
+
+      - name: Smoke test the artifacts
+        shell: pwsh
+        env:
+          FILEBOUNDARY_BUILD_COMMIT: ${{ env.SHORT_SHA }}
+        run: |
+          pwsh tools/release_smoke.ps1 -Version $env:VERSION -SourceDir . `
+            -PortableZip "dist/release/FileBoundary-v$($env:VERSION)-windows-x86_64.zip" `
+            -FullPackage "dist/release/FileBoundary-$($env:VERSION)-windows-x64.zip" `
+            -Manifest "dist/release/manifest.json"
+          if ($LASTEXITCODE -ne 0) { throw "release smoke failed" }
+
+      - name: Write release notes
+        shell: pwsh
+        run: |
+          # single-quoted here-string + placeholder replacement: no
+          # accidental PowerShell interpolation inside the notes text
+          $notes = @'
+          # FileBoundary v__VERSION__
+
+          Windows-native file encryption diagnostics and adversarial recovery toolkit. Local-first; every network access is an explicit operator-initiated update command (ADR-0008).
+
+          ## What shipped
+
+          - Portable Windows x86_64 application (`FileBoundary-v__VERSION__-windows-x86_64.zip`): self-contained WinUI 3 host - no Racket or runtime prerequisite; unpack anywhere and run `RivetHost.exe`.
+          - Update channel: `manifest.json` + full package zip for the explicit `update check` / `update now` / `update apply` commands into `%LOCALAPPDATA%\FileBoundary`.
+          - Source distribution (`FileBoundary-v__VERSION__-source.tar.gz`): headless CLI (`racket src/cli.rkt`) requiring Racket CS 9.3 - the normative, agent-facing interface.
+          - `SHA256SUMS.txt` and per-file `.sha256` for every artifact.
+
+          ## Engine surface
+
+          Read-only scan and Filter Manager diagnostics; authorized export comparison (evidence, not certification); authorized-scope decryption per ADR-0006: wrapped OOXML (per-entry CRC verification) and PDF (semantic head rebuild + xref spot-check); pad recovery from an aligned plaintext/ciphertext twin pair; persistent scan manifest; self-update.
+
+          ## Verified
+
+          - Full test suite green on Windows x64 ([run](__RUN_URL__)).
+          - Packaging smoke passed on the artifacts of this run: clean-directory extraction + checksums, GUI boot probe, CLI version/doctor envelopes, update-apply into a clean install root.
+
+          ## Known limitations
+
+          - Interactive GUI smoke on a protected production machine remains a human gate (see docs/windows-qa.md) - do not delete encrypted originals based on any FileBoundary result.
+          - The policy pad is operator key material and is never shipped; decryption and pad recovery require it (`FILEBOUNDARY_PAD`).
+          - Scan and diagnostics are read-only; recognized wrappers are not proof of encryption state; export comparison is not decryption.
+          - Windows-only package in this channel (engine is Racket; other platform legs are not shipped yet).
+
+          ## Install (portable)
+
+          Unzip `FileBoundary-v__VERSION__-windows-x86_64.zip` to a local folder and run `RivetHost.exe`. For the CLI, use the source distribution with Racket CS 9.3 and see README.md.
+
+          ## Update
+
+          `racket src/cli.rkt update check` / `update now` against this release's `manifest.json`.
+          '@
+          $runUrl = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          $notes = $notes.Replace('__VERSION__', $env:VERSION).Replace('__RUN_URL__', $runUrl)
+          Set-Content -LiteralPath dist/release/NOTES.md -Value $notes -Encoding utf8
+
+      - name: Publish release (tag push)
+        if: github.event_name == 'push'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem dist/release -File |
+            Where-Object { $_.Name -ne 'NOTES.md' } |
+            ForEach-Object { $_.FullName })
+          gh release create "${{ github.ref_name }}" $assets `
+            --title "FileBoundary v$env:VERSION" `
+            --notes-file dist/release/NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw "release publish failed" }
+
+      - name: Upload dry-run artifacts
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FileBoundary-v${{ env.VERSION }}-release-candidate
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 14
