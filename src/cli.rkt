@@ -203,24 +203,10 @@
              (define out (hash-ref flags "--out" (lambda () #f)))
              (define base-src (hash-ref flags "--pad" (lambda () #f)))
              (if (and plain cipher out)
-                 (let* ([base (if base-src
-                                  (load-pad base-src)
-                                  (hash))]
-                        [r (twin-vote (file->bytes plain)
-                                      (file->bytes cipher)
-                                      base)]
-                        [pad (hash-ref r 'pad)]
+                 ;; the engine owns recovery + pad JSON writing (shared
+                 ;; with the GUI host); the CLI shapes the envelope
+                 (let* ([r (write-twin-pad plain cipher out base-src)]
                         [missing (hash-ref r 'missing)])
-                   (with-output-to-file out
-                     (lambda ()
-                       (write-json
-                        (hash 'schemaVersion 1
-                              'kind 'policy-pad
-                              'pad (for/list ([c (in-range 512)])
-                                     (or (hash-ref pad c #f)
-                                         (json-null)))))
-                       (newline))
-                     #:exists 'replace)
                    (values (if (null? missing) 0 1)
                            (if (null? missing) "ok" "partial")
                            (hash 'covered (hash-ref r 'covered)

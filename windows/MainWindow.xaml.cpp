@@ -147,11 +147,18 @@ void MainWindow::Decrypt_Click(
   RunDecryptAsync();
 }
 
+void MainWindow::Twin_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  RunTwinAsync();
+}
+
 void MainWindow::SetBusyUi(bool busy) {
   ScanButton().IsEnabled(!busy && backend_ && backend_->running());
   DoctorButton().IsEnabled(!busy && backend_ && backend_->running());
   VerifyButton().IsEnabled(!busy && backend_ && backend_->running());
   DecryptButton().IsEnabled(!busy && backend_ && backend_->running());
+  TwinButton().IsEnabled(!busy && backend_ && backend_->running());
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
     StatusBar().Message(L"Read-only operation running...");
@@ -211,6 +218,43 @@ void MainWindow::RunDecryptAsync() {
   try {
     rivet_app::API api(*backend);
     (void)api.decrypt_summary_async(input, output,
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) window->ShowResult(message);
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
+}
+
+void MainWindow::RunTwinAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  auto const plain = winrt::to_string(TwinPlainBox().Text());
+  auto const cipher = winrt::to_string(TwinCipherBox().Text());
+  auto const output = winrt::to_string(TwinOutputBox().Text());
+  if (plain.empty() || cipher.empty() || output.empty()) {
+    SetErrorUi("Enter the twin plaintext path, the twin ciphertext path and the pad output path");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.pad_twin_summary_async(plain, cipher, output,
         [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
           try {
             auto message = result.get();

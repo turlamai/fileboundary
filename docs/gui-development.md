@@ -43,9 +43,17 @@ $env:FILEBOUNDARY_PAD = "D:\keys\pad_full.json"
 
 Acceptance: decrypt a wrapped fixture, confirm every entry reports `crcOk: true` (or `xrefBad: 0` for PDF), open the output in a strict consumer (e.g. Explorer's zip view), and confirm the original file's bytes and timestamps are unchanged (read-only guarantee).
 
+## Pad twin panel (development preview)
+
+The `Pad Twin` panel drives the same engine entry as `racket src/cli.rkt pad twin`: the operator supplies an **aligned** plaintext/ciphertext twin pair (one file saved through a whitelisted app, the same byte range copied through a non-whitelisted tool, per [FIELD_PROTOCOL](../research/t0/FIELD_PROTOCOL.md)) and the destination for the recovered policy pad. `pad-twin-summary` writes the pad only to the operator-supplied path — pad material is never returned over the RPC; the response carries coverage counters (`covered`, `missingCount`, `complete`) and the output file name.
+
+Alignment matters: documents that merely share content are not twins. Misaligned pairs vote to `complete: false` with a high `missingCount` instead of guessing a partial pad. An optional base pad for seeding known columns is CLI-only (`--pad`) for now.
+
+Acceptance: recover from an aligned pair, confirm `covered: 512, complete: true`, then use the recovered pad to decrypt a wrapped file and confirm full CRC verification.
+
 ## Not yet supported
 
-No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, pad-twin recovery panel, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
+No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
 
 ## Architecture note
 

@@ -28,6 +28,8 @@ struct MainWindow : MainWindowT<MainWindow> {
                     Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void Decrypt_Click(winrt::Windows::Foundation::IInspectable const& sender,
                      Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  void Twin_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                  Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
  private:
   winrt::fire_and_forget InitializeBackendAsync();
@@ -35,6 +37,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunDoctorAsync();
   void RunVerifyAsync();
   void RunDecryptAsync();
+  void RunTwinAsync();
   void SetBusyUi(bool busy);
   void ShowResult(std::string const& message);
   void SetReadyUi();
