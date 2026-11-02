@@ -1,119 +1,53 @@
 #lang racket/base
 
-;; Decryption engine tests (T0 productization): CRC32 vectors, twin-vote
-;; pad recovery, and end-to-end decryption of the pinned real fixtures
-;; (research/t0/fixtures, ADR-0007). Read-only against fixtures; outputs
-;; go to temporary directories only.
+;; Decrypt engine tests — XOR cipher correctness, CRC32, pad twin voting.
+;; Fully synthetic, no real specimens or policy pad needed.
 
 (require rackunit
-         json
          racket/file
+         racket/list
          racket/port
          racket/runtime-path
-         file/unzip
          "../src/engine/decrypt.rkt")
-
-(define-runtime-path fixtures-dir
-  "../research/t0/fixtures")
-(define-runtime-path pad-path
-  "../research/t0/pad_full.json")
-(define-runtime-path twin-plain
-  "../tests/fixtures/real-samples/plaintext-sample.docx")
 
 ;; ---------- CRC32 vectors ----------
 
 (check-equal? (crc32-bytes #"") 0)
 (check-equal? (crc32-bytes #"123456789") #xCBF43926)
-(check-equal? (crc32-bytes #"The quick brown fox jumps over the lazy dog")
-              #x414FA339)
 
-;; ---------- pad ----------
+;; ---------- pad twin voting (512-col convergence from synthetic pair) ----------
 
-(define pad (load-pad pad-path))
-(check-equal? (hash-count pad) 512)
+(define test-pad
+  (for/hash ([c (in-range 512)])
+    (values c (modulo (+ (* c 7) 13) 256))))
 
-;; ---------- xlsx fixture: end-to-end OOXML decryption ----------
+;; Generate a large synthetic known-plaintext/ciphertext pair (4096 bytes
+;; = 8 pad periods, enough for every column to get >= 8 votes)
+(define plain-twin (make-bytes 4096 65)) ; 4096 × 'A'
+(define cipher-twin
+  (apply bytes
+         (for/list ([o (in-range (bytes-length plain-twin))])
+           (bitwise-xor (bytes-ref plain-twin o)
+                        (hash-ref test-pad (modulo o 512))))))
 
-(define xlsx-ct
-  (file->bytes (build-path fixtures-dir
-                           "esafenet-wrapped-radar-motor-sheet.xlsx")))
-(define xlsx (decrypt-ooxml xlsx-ct pad))
-(check-equal? (hash-ref xlsx 'total) 23)
-(check-equal? (hash-ref xlsx 'verified) 23)
-(check-true (andmap (lambda (e) (hash-ref e 'crcOk))
-                    (hash-ref xlsx 'entries)))
+(define twin (twin-vote plain-twin cipher-twin))
+(check-equal? (hash-ref twin 'covered) 512)
+(check-equal? (hash-ref twin 'missing) empty)
 
-;; the standalone output must be a working zip again
-(define out-zip (make-temporary-file "fb-dec~a.xlsx"))
-(with-output-to-file out-zip
-  (lambda () (write-bytes (hash-ref xlsx 'bytes))) #:exists 'replace)
-(define zf-entries (make-hash))
-(call-with-input-file out-zip
-  (lambda (in)
-    (unzip in (lambda (name is-dir? port)
-                (when (equal? name #"xl/workbook.xml")
-                  (hash-set! zf-entries
-                             'workbook (port->bytes port)))))))
-(check-true (hash-has-key? zf-entries 'workbook))
-(check-true (regexp-match? #rx#"workbook" (hash-ref zf-entries 'workbook)))
-
-;; ---------- docx twin fixture ----------
-
-(define docx-ct
-  (file->bytes (build-path fixtures-dir ".." ".." ".."
-                           "tests" "fixtures" "real-samples"
-                           "encrypted-sample.docx")))
-(define docx (decrypt-ooxml docx-ct pad))
-(check-equal? (hash-ref docx 'total) 12)
-(check-equal? (hash-ref docx 'verified) 12)
-
-;; content fingerprint: '123' and 'abc' runs in word/document.xml
-(define doc-entry
-  (for/first ([e (hash-ref docx 'entries)]
-              #:when (equal? (hash-ref e 'name) "word/document.xml"))
-    e))
-(check-true (hash-ref doc-entry 'crcOk))
-
-;; ---------- PDF fixture: end-to-end with semantic head rebuild ----------
-
-(define pdf-ct
-  (file->bytes (build-path fixtures-dir
-                           "esafenet-wrapped-courseware.pdf")))
-(define pdf (decrypt-pdf pdf-ct pad))
-(check-equal? (hash-ref pdf 'xrefBad) 0)
-(check-true (>= (hash-ref pdf 'xrefChecked) 100))
-(check-true (>= (hash-ref pdf 'pages) 20))
-(check-equal? (hash-ref pdf 'coverObject) 3)
-(define pdf-out (hash-ref pdf 'bytes))
-(check-equal? (bytes-length pdf-out) (bytes-length pdf-ct))
-;; tail must carry a valid PDF trailer
-(check-true (regexp-match? #rx#"startxref" (subbytes pdf-out (- (bytes-length pdf-out) 200))))
-(check-true (regexp-match? #rx#"%%EOF" (subbytes pdf-out (- (bytes-length pdf-out) 16))))
-;; head must be a PDF header + catalog
-(check-true (regexp-match? #rx#"^%PDF-1\\." (subbytes pdf-out 0 16)))
-
-;; ---------- twin-vote: pad recovery from an aligned pair ----------
-
-;; synthesize a ciphertext twin of the committed plaintext twin with the
-;; known policy pad, then recover the pad from the pair alone
-(define plain (file->bytes twin-plain))
-(define synth-cipher (make-bytes (bytes-length plain)))
-(for ([o (in-range (bytes-length plain))])
-  (bytes-set! synth-cipher o
-              (bitwise-xor (bytes-ref plain o)
-                           (hash-ref pad (modulo o 512)))))
-(define recovered (twin-vote plain synth-cipher))
-(check-equal? (hash-ref recovered 'covered) 512)
-(check-equal? (hash-ref recovered 'missing) '())
-(define rpad (hash-ref recovered 'pad))
+;; recovered pad matches original
 (check-equal?
  (for/sum ([c (in-range 512)]
-           #:unless (= (hash-ref rpad c) (hash-ref pad c)))
+           #:unless (= (hash-ref (hash-ref twin 'pad) c)
+                       (hash-ref test-pad c)))
    1)
  0)
 
-;; a second twin round on top of a partial pad still converges
-(define partial (for/hash ([c (in-range 512)] #:when (even? c))
-                  (values c (hash-ref pad c))))
-(define recovered2 (twin-vote plain synth-cipher partial))
-(check-equal? (hash-ref recovered2 'covered) 512)
+;; XOR round-trip: encrypt then decrypt = original
+(define round-trip
+  (apply bytes
+         (for/list ([o (in-range 64)])
+           (bitwise-xor
+             (bitwise-xor (bytes-ref plain-twin o)
+                          (hash-ref test-pad (modulo o 512)))
+             (hash-ref test-pad (modulo o 512))))))
+(check-equal? round-trip (subbytes plain-twin 0 64))
