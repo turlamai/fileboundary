@@ -21,19 +21,14 @@
   "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
 
 (define-runtime-path repo-root "..")
+;; Dev-tree fallback pad. The engine's portable pad resolution runs first
+;; ($FILEBOUNDARY_PAD, then pad_full.json beside the invoked location);
+;; the repository copy is a development convenience only.
 (define repo-default-pad
   (build-path repo-root "research" "t0" "pad_full.json"))
-;; default policy pad resolution: $FILEBOUNDARY_PAD, then pad_full.json
-;; beside the invoked location (packaged distributions), then the dev
-;; repository copy
-(define (default-pad-path)
-  (or (let ([env (getenv "FILEBOUNDARY_PAD")])
-        (and env (file-exists? env) (simple-form-path env)))
-      (let* ([exe (find-system-path 'run-file)]
-             [dir (path-only (simple-form-path exe))])
-        (define candidate
-          (if dir (build-path dir "pad_full.json") #f))
-        (and candidate (file-exists? candidate) candidate))
+(define (resolve-pad-path cli-flag)
+  (or cli-flag
+      (default-pad-path)
       (and (file-exists? repo-default-pad) repo-default-pad)
       repo-default-pad))
 
@@ -72,6 +67,10 @@
     #:exists 'replace)
   (for/hash ([k (in-list (hash-keys result))] #:unless (equal? k 'bytes))
     (values k (hash-ref result k))))
+
+;; decrypt: OOXML first (its CD is findable), fall back to the PDF path —
+;; implemented once in the engine (decrypt-file) so the CLI and the GUI
+;; host share the same code path
 
 ;; flag parse helper: returns (values positionals flags); flags with values
 ;; are listed in known-value-flags, all other "--x" become boolean flags
@@ -172,10 +171,10 @@
      (let-values ([(_ flags) (split-flags rest '("--in" "--out" "--pad"))])
        (define in-path (hash-ref flags "--in" (lambda () #f)))
        (define out-path (hash-ref flags "--out" (lambda () #f)))
-       (define pad-path (or (hash-ref flags "--pad" (lambda () #f))
-                            (default-pad-path)))
+       (define pad-path (resolve-pad-path
+                         (hash-ref flags "--pad" (lambda () #f))))
        (if (and in-path out-path)
-           (let ([report (run-decrypt in-path out-path pad-path)])
+           (let ([report (decrypt-file in-path out-path pad-path)])
              (values 0 "ok"
                      (hash-set report
                                'output
