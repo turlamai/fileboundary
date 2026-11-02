@@ -6,37 +6,29 @@
          racket/path
          racket/string
          (prefix-in domain: "../src/engine/summary.rkt")
-         (prefix-in decrypt: "../src/engine/decrypt.rkt"))
+         (prefix-in dec: "../src/engine/decrypt.rkt"))
 
 (provide start)
 
-;; The GUI delegates to the same Racket domain functions as the headless tools.
-;; No file contents or local paths are returned in RPC responses.
 (define-rpc (scan-summary [source : String] : String)
   (domain:scan-summary source #:max-files 200))
 
 (define-rpc (doctor-summary : String)
   (domain:doctor-summary))
 
-;; Both file paths must be supplied by the operator; no automatic decrypted
-;; content export and no DLP process-policy interaction occurs here.
 (define-rpc (verify-export-summary [original : String] [exported : String] : String)
   (domain:verify-export-summary original exported))
 
-;; ---------- decrypt summary ----------
-
-;; Loads the policy pad, decrypts the wrapped file at input-path,
-;; writes the standalone result to output-path, and returns a JSON
-;; summary with per-entry CRC verdicts. No decrypted content is
-;; returned via RPC — the operator designates the output path.
+;; decrypt helper: standalone function (not inside define-rpc body,
+;; which does not support internal defines)
 (define (do-decrypt input-path output-path)
   (define pad-path
     (build-path (path->complete-path
                  (simple-form-path input-path))
                 "up" "up" "up" "research" "t0" "pad_full.json"))
-  (define pad (decrypt:load-pad pad-path))
+  (define pad (dec:load-pad pad-path))
   (define ct (file->bytes input-path))
-  (define r (decrypt:decrypt-ooxml ct pad))
+  (define r (dec:decrypt-ooxml ct pad))
   (define entries (hash-ref r 'entries))
   (define verified (hash-ref r 'verified))
   (define total (hash-ref r 'total))
@@ -54,8 +46,6 @@
                      safe (if (hash-ref e 'crcOk) "true" "false")))
            ",")))
 
-;; RPC wrapper — body is a single expression (no internal defines,
-;; which the Rivet define-rpc macro does not support)
 (define-rpc (decrypt-summary [input : String] [output : String] : String)
   (do-decrypt input output))
 
