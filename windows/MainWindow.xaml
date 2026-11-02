@@ -29,6 +29,9 @@
                 <Button x:Name="DecryptButton" Content="Decrypt / 解密"
                         AutomationProperties.AutomationId="decrypt-button"
                         IsEnabled="False" Click="Decrypt_Click" />
+                <Button x:Name="TwinButton" Content="Pad Twin / 恢复 Pad"
+                        AutomationProperties.AutomationId="pad-twin-button"
+                        IsEnabled="False" Click="Twin_Click" />
             </StackPanel>
             <TextBlock Text="Encrypted input path / 加密文件路径" />
             <TextBox x:Name="DecryptInputBox"
@@ -37,6 +40,16 @@
             <TextBox x:Name="DecryptOutputBox"
                      PlaceholderText="D:\Recovered\output.docx"
                      AutomationProperties.AutomationId="decrypt-output-path" />
+            <TextBlock Text="Twin plaintext path / 明文副本路径" />
+            <TextBox x:Name="TwinPlainBox"
+                     AutomationProperties.AutomationId="twin-plain-path" />
+            <TextBlock Text="Twin ciphertext path / 密文副本路径" />
+            <TextBox x:Name="TwinCipherBox"
+                     AutomationProperties.AutomationId="twin-cipher-path" />
+            <TextBlock Text="Recovered pad output path / 恢复的 pad 输出路径" />
+            <TextBox x:Name="TwinOutputBox"
+                     PlaceholderText="D:\Keys\new-policy-pad.json"
+                     AutomationProperties.AutomationId="twin-output-path" />
             <TextBlock Text="Results / 结果" FontWeight="SemiBold" FontSize="19" />
             <TextBlock x:Name="OutputText" TextWrapping="Wrap"
                        AutomationProperties.AutomationId="scan-result"

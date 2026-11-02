@@ -154,3 +154,52 @@
                   (values c (hash-ref pad c))))
 (define recovered2 (twin-vote plain synth-cipher partial))
 (check-equal? (hash-ref recovered2 'covered) 512)
+
+;; ---------- write-twin-pad: pad JSON via the shared CLI/GUI entry ----------
+
+;; recover from files on disk (the shape the CLI and the GUI RPC use),
+;; then prove the written pad decrypts the real wrapped twin
+(define twin-dir (make-temporary-file "fb-twin~a/" 'directory))
+(define twin-plain-path (build-path twin-dir "plain.docx"))
+(copy-file twin-plain twin-plain-path)
+(define twin-cipher-path (build-path twin-dir "cipher.docx"))
+(define twin-plain-bytes (file->bytes twin-plain-path))
+(define twin-cipher-bytes
+  (let ([ct (make-bytes (bytes-length twin-plain-bytes))])
+    (for ([o (in-range (bytes-length twin-plain-bytes))])
+      (bytes-set! ct o (bitwise-xor (bytes-ref twin-plain-bytes o)
+                                    (hash-ref pad (modulo o 512)))))
+    ct))
+(call-with-output-file twin-cipher-path
+  (lambda (out) (write-bytes twin-cipher-bytes out)))
+(define twin-report (write-twin-pad twin-plain-path twin-cipher-path
+                                    (build-path twin-dir "pad.json")))
+(check-equal? (hash-ref twin-report 'covered) 512)
+(check-equal? (hash-ref twin-report 'missing) '())
+
+;; the written pad file is loadable and decrypts the real wrapped twin
+(define repad (load-pad (build-path twin-dir "pad.json")))
+(check-equal? (hash-count repad) 512)
+(define docx2 (decrypt-ooxml
+               (file->bytes (build-path fixtures-dir ".." ".." ".."
+                                        "tests" "fixtures" "real-samples"
+                                        "encrypted-sample.docx"))
+               repad))
+(check-equal? (hash-ref docx2 'verified) 12)
+(check-equal? (hash-ref docx2 'total) 12)
+
+;; base-pad seeding: a partial pad still converges through the file path
+(define partial-pad-path (build-path twin-dir "partial-pad.json"))
+(call-with-output-file partial-pad-path
+  (lambda (out)
+    (write-json
+     (hash 'schemaVersion 1
+           'kind "policy-pad"
+           'pad (for/list ([c (in-range 512)])
+                  (if (even? c) (hash-ref pad c) (json-null))))
+     out)))
+(check-equal? (hash-ref (write-twin-pad twin-plain-path twin-cipher-path
+                                        (build-path twin-dir "pad2.json")
+                                        partial-pad-path)
+                        'covered)
+              512)

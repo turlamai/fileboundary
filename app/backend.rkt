@@ -50,5 +50,20 @@
                               'crcOk (hash-ref e 'crcOk)))
              'output out-name))))
 
+;; pad twin: the GUI panel delegates to the same engine entry as
+;; `racket src/cli.rkt pad twin`. The recovered pad is operator key
+;; material: it is written only to the operator-supplied output path and
+;; never returned over the wire — the response carries coverage counters
+;; (covered/missingCount/complete) and the output file name only.
+(define-rpc (pad-twin-summary [plain : String] [cipher : String] [output : String] : String)
+  (define r (dec:write-twin-pad plain cipher output))
+  (define missing (hash-ref r 'missing))
+  (jsexpr->string
+   (hash 'covered (hash-ref r 'covered)
+         'missingCount (length missing)
+         'complete (null? missing)
+         'output (path->string
+                  (file-name-from-path (simple-form-path output))))))
+
 (define (start in-fd out-fd)
   (serve-fds in-fd out-fd))

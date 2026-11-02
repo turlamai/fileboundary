@@ -34,6 +34,7 @@
          decrypt-ooxml
          decrypt-pdf
          twin-vote
+         write-twin-pad
          decrypt-file
          default-pad-path)
 
@@ -545,6 +546,33 @@
     (for/sum ([c (in-range 512)] #:when (hash-ref pad c #f)) 1))
   (hash 'pad pad 'covered covered 'missing
         (for/list ([c (in-range 512)] #:unless (hash-ref pad c #f)) c)))
+
+;; ---------- pad from a twin pair (shared by CLI and GUI host) ----------
+
+;; Recovers the policy pad from an aligned plaintext/ciphertext twin pair
+;; (FIELD_PROTOCOL step 2) and writes the pad JSON to out-path. The pad
+;; is operator key material: it only ever reaches the operator-supplied
+;; file, never a return value, so callers report coverage counters only.
+;; Optional base-pad-path seeds already-known columns.
+(define (write-twin-pad plain-path cipher-path out-path [base-pad-path #f])
+  (define base (if base-pad-path (load-pad base-pad-path) (hash)))
+  (define r (twin-vote (file->bytes plain-path)
+                       (file->bytes cipher-path)
+                       base))
+  (define pad (hash-ref r 'pad))
+  (define missing (hash-ref r 'missing))
+  (with-output-to-file out-path
+    (lambda ()
+      (write-json
+       (hash 'schemaVersion 1
+             'kind "policy-pad"
+             'pad (for/list ([c (in-range 512)])
+                    (or (hash-ref pad c #f)
+                        (json-null)))))
+      (newline))
+    #:exists 'replace)
+  (hash 'covered (hash-ref r 'covered)
+        'missing missing))
 
 ;; ---------- canonical decrypt entry (shared by CLI and GUI host) ----------
 

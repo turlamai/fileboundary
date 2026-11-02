@@ -34,6 +34,14 @@ Only where recovery of the specific content is authorized **and** the operator o
    - Open the output in a strict consumer (Explorer zip view / Office / a PDF reader) — the original stays byte-identical and untouched.
    - With no pad configured, the panel must show a bounded error (no partial output file), never a guess.
 
+## Controlled pad recovery (aligned twin pair available, ADR-0006 scope)
+
+Only where recovering the policy pad is authorized:
+
+1. Produce an aligned twin pair per [FIELD_PROTOCOL](../research/t0/FIELD_PROTOCOL.md): save one file through a whitelisted app (plaintext view), copy the same byte range through a non-whitelisted tool (wrapped view). Documents that merely share content are **not** twins — a misaligned pair must return `complete: false` with a high `missingCount`, never a guessed pad.
+2. Fill the twin plaintext, twin ciphertext and pad output paths; select **Pad Twin**.
+3. Acceptance: `covered: 512, complete: true`; the pad file exists at the operator-supplied path only; no pad material appears in the result panel. A recovered pad may then feed the Decrypt panel (set it via `$FILEBOUNDARY_PAD`).
+
 ## Controlled twin sample
 
 The repository contains an owner-approved encrypted/plaintext DOCX twin pair under ADR-0004. CI verifies the known wrapper classification, file sizes/hashes, and the fact that comparing the already-plaintext twin **does not claim decryption**. The QA process on the operator machine should use copies outside the repository and only where approved. Do not upload additional real protected or plaintext documents to GitHub.
