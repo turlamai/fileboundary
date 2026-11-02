@@ -1,0 +1,57 @@
+# Build artifacts
+build/
+dist/
+out/
+bin/
+obj/
+target/
+
+# FileBoundary artifacts — sensitive, live OUTSIDE the repository
+# (reserved extensions: diagnostics report / inventory manifest / audit log)
+*.fbreport.json
+*.fbmanifest.json
+*.fbaudit.jsonl
+recovery-output/
+diagnostics-output/
+scan-output/
+
+# Scan databases and local state
+*.sqlite
+*.sqlite3
+*.db
+
+# Secrets and key material — never commit
+*.pem
+*.key
+*.pfx
+*.p12
+secrets.*
+.env
+
+# Logs
+*.log
+logs/
+
+# OS noise
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# IDE
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Toolchain candidates (final stack decided by ADR-0002)
+node_modules/
+__pycache__/
+*.pyc
+compiled/
+.rivet/
+
+# Test artifacts
+test-output/
+windows/GeneratedBackend.hpp
+research/t0/dbg*

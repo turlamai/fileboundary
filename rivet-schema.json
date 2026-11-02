@@ -1,0 +1,59 @@
+{
+  "device-rpcs": [],
+  "enums": [],
+  "events": [],
+  "format": "rivet-schema",
+  "format-version": 1,
+  "records": [],
+  "rpcs": [
+    {
+      "arguments": [],
+      "name": "doctor-summary",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "source",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "name": "scan-summary",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "name": "verify-export-summary",
+      "arguments": [
+        {
+          "name": "original",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "exported",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    }
+  ],
+  "states": [],
+  "rvt-protocol": 1
+}

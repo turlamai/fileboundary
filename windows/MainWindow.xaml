@@ -1,0 +1,39 @@
+<Window
+    x:Class="RivetHost.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer>
+        <StackPanel Padding="28" Spacing="16" MaxWidth="720">
+            <TextBlock Text="FileBoundary" FontSize="32" FontWeight="SemiBold" />
+            <TextBlock Text="Windows file diagnostics · Read only"
+                       Opacity="0.75" />
+            <InfoBar x:Name="StatusBar" IsOpen="True" IsClosable="False"
+                     Severity="Informational" Message="Starting embedded Racket CS..." />
+            <TextBlock Text="File or directory path / 文件或文件夹路径" />
+            <TextBox x:Name="PathBox" PlaceholderText="C:\TestData\sample.pdf"
+                     AutomationProperties.AutomationId="scan-path" />
+            <TextBlock Text="Approved exported file / 已获授权导出的文件" />
+            <TextBox x:Name="ExportPathBox"
+                     PlaceholderText="D:\ApprovedExports\document.pdf"
+                     AutomationProperties.AutomationId="approved-export-path" />
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button x:Name="ScanButton" Content="Scan / 扫描"
+                        AutomationProperties.AutomationId="scan-button"
+                        IsEnabled="False" Click="Scan_Click" />
+                <Button x:Name="DoctorButton" Content="Diagnostics / 诊断"
+                        AutomationProperties.AutomationId="doctor-button"
+                        IsEnabled="False" Click="Doctor_Click" />
+                <Button x:Name="VerifyButton" Content="Check Export / 验证导出"
+                        AutomationProperties.AutomationId="verify-export-button"
+                        IsEnabled="False" Click="Verify_Click" />
+            </StackPanel>
+            <TextBlock Text="Results / 结果" FontWeight="SemiBold" FontSize="19" />
+            <TextBlock x:Name="OutputText" TextWrapping="Wrap"
+                       AutomationProperties.AutomationId="scan-result"
+                       Text="Choose a local file or folder. No file data is exported." />
+            <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                     Title="Recovery status: unverified"
+                     Message="Recognized headers are not proof of plaintext or decryption."/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

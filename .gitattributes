@@ -1,0 +1,12 @@
+* text=auto eol=lf
+
+# Binaries — never normalized
+*.png binary
+*.jpg binary
+*.ico binary
+*.exe binary
+*.dll binary
+*.msi binary
+*.zip binary
+*.7z binary
+*.pdf binary

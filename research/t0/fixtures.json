@@ -1,0 +1,1 @@
+{"note": "Real encrypted specimens were removed per ADR-0009. Decrypt pipeline tests use synthetic wrappers (tests/decrypt-test.rkt) and the pad twin protocol (FIELD_PROTOCOL step 2) for production pads."}
