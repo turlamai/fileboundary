@@ -34,6 +34,7 @@
          decrypt-ooxml
          decrypt-pdf
          twin-vote
+         decrypt-file
          default-pad-path)
 
 ;; ---------- small helpers ----------
@@ -280,6 +281,9 @@
   (for ([e entries])
     (define is-first (< (hash-ref e 'lho) 512))
     (define name (hash-ref e 'name))
+    ;; full 46-byte CD record: a malformed stride (or a cd_size of 0)
+    ;; passes tolerant scanners but breaks strict readers, so the record
+    ;; layout and the running position must both be exact
     (write-bytes (bytes-append #"PK\x01\x02"
                                    (u16->bytes 20)
                                    (u16->bytes (hash-ref e 'ver-need))
@@ -293,10 +297,14 @@
                                                    (hash-ref e 'csize)))
                                    (u32->bytes (hash-ref e 'usize))
                                    (u16->bytes (bytes-length name))
-                                   (u16->bytes 0) (u16->bytes 0)
-                                   (u16->bytes 0) (u16->bytes 0)
+                                   (u16->bytes 0)   ; extra field length
+                                   (u16->bytes 0)   ; comment length
+                                   (u16->bytes 0)   ; disk number start
+                                   (u16->bytes 0)   ; internal attributes
+                                   (u32->bytes 0)   ; external attributes
                                    (u32->bytes (hash-ref offs name))
-                                   name) out))
+                                   name) out)
+    (set! pos (+ pos 46 (bytes-length name))))
   (define cd-size (- pos cd-start))
   (write-bytes (bytes-append #"PK\x05\x06"
                                  (u16->bytes 0) (u16->bytes 0)
@@ -538,11 +546,62 @@
   (hash 'pad pad 'covered covered 'missing
         (for/list ([c (in-range 512)] #:unless (hash-ref pad c #f)) c)))
 
-;; ---------- default pad location (dev tree) ----------
+;; ---------- canonical decrypt entry (shared by CLI and GUI host) ----------
 
-(require racket/runtime-path)
-(define-runtime-path repo-default-pad
-  "../../research/t0/pad_full.json")
+;; Decrypts an E-SafeNet-wrapped file to out-path: OOXML first (its CD is
+;; findable), falling back to the PDF path. The returned report carries
+;; per-entry CRC verdicts and counters only — never file contents. The
+;; pad path comes from the caller (default-pad-path or --pad).
+(define (decrypt-file in-path out-path pad-path)
+  (unless pad-path
+    (raise-arguments-error 'decrypt-file
+                           "no policy pad available"
+                           "resolution"
+                           "set FILEBOUNDARY_PAD or pass --pad"))
+  (define pad (load-pad pad-path))
+  (define ct (file->bytes in-path))
+  (parse-wrapper ct)
+  (define result
+    (with-handlers ([exn:fail?
+                     (lambda (_)
+                       (define r (decrypt-pdf ct pad))
+                       (hash 'kind "pdf"
+                             'headRebuilt (hash-ref r 'headRebuilt)
+                             'pages (hash-ref r 'pages)
+                             'coverObject (hash-ref r 'coverObject)
+                             'xrefChecked (hash-ref r 'xrefChecked)
+                             'xrefBad (hash-ref r 'xrefBad)
+                             'bytes (hash-ref r 'bytes)))])
+      (define r (decrypt-ooxml ct pad))
+      (hash 'kind "ooxml"
+            'entries (hash-ref r 'entries)
+            'verified (hash-ref r 'verified)
+            'total (hash-ref r 'total)
+            'bytes (hash-ref r 'bytes))))
+  (with-output-to-file out-path
+    (lambda () (write-bytes (hash-ref result 'bytes)))
+    #:exists 'replace)
+  (for/hash ([k (in-list (hash-keys result))] #:unless (equal? k 'bytes))
+    (values k (hash-ref result k))))
+
+;; ---------- default pad resolution (portable) ----------
+;;
+;; The policy pad is operator key material that lives OUTSIDE the
+;; repository and any packaged distribution, so it must never be a
+;; compile-time path reference: `raco rivet build` distribution assembly
+;; would try to copy the referenced file into the package and fail when
+;; it is absent (and it must be absent — key material is not shipped).
+;; Resolved at call time instead: $FILEBOUNDARY_PAD first, then
+;; pad_full.json beside the invoked location; #f when neither exists.
+;; The CLI adds its dev-tree fallback on top; the GUI host relies on the
+;; operator environment.
 
 (define (default-pad-path)
-  repo-default-pad)
+  (or (let ([env (getenv "FILEBOUNDARY_PAD")])
+        (and env (file-exists? env) (simple-form-path env)))
+      (let* ([exe (find-system-path 'run-file)]
+             [dir (path-only (simple-form-path exe))])
+        (define candidate
+          (if dir (build-path dir "pad_full.json") #f))
+        (and candidate (file-exists? candidate) candidate))
+      #f))

@@ -57,6 +57,43 @@
 (check-true (hash-has-key? zf-entries 'workbook))
 (check-true (regexp-match? #rx#"workbook" (hash-ref zf-entries 'workbook)))
 
+;; strict central-directory conformance: tolerant scanners accept a broken
+;; CD, but strict readers (Explorer, some Office parsers, zipfile) trust
+;; the EOCD cd_size/cd_ofs fields and the 46-byte record stride — the
+;; rebuilt archive must conform, not merely scan
+(define (check-strict-zip bs)
+  (define n (bytes-length bs))
+  (define eocd (for/first ([i (in-range (- n 22) -1 -1)]
+                           #:when (bytes=? (subbytes bs i (+ i 4))
+                                           #"PK\x05\x06"))
+                 i))
+  (check-true (number? eocd))
+  (define (u16 o) (+ (bytes-ref bs o) (* 256 (bytes-ref bs (+ o 1)))))
+  (define (u32 o)
+    (+ (bytes-ref bs o) (* 256 (bytes-ref bs (+ o 1)))
+       (* 65536 (bytes-ref bs (+ o 2)))
+       (* 16777216 (bytes-ref bs (+ o 3)))))
+  (define n-entries (u16 (+ eocd 10)))
+  (define cd-size (u32 (+ eocd 12)))
+  (define cd-ofs (u32 (+ eocd 16)))
+  (check-equal? n-entries 23)
+  (check-true (> cd-size 0))
+  (check-true (bytes=? (subbytes bs cd-ofs (+ cd-ofs 4)) #"PK\x01\x02"))
+  ;; walk the CD: records must fill cd_size exactly and every local
+  ;; header offset must land on a PK\x03\x04 with the matching name
+  (let loop ([o cd-ofs] [seen 0])
+    (if (= seen n-entries)
+        (check-equal? o (+ cd-ofs cd-size))
+        (let* ([name-len (u16 (+ o 28))]
+               [lho (u32 (+ o 42))]
+               [name (subbytes bs (+ o 46) (+ o 46 name-len))])
+          (check-true (bytes=? (subbytes bs o (+ o 4)) #"PK\x01\x02"))
+          (check-true (bytes=? (subbytes bs lho (+ lho 4)) #"PK\x03\x04"))
+          (check-true (bytes=? (subbytes bs (+ lho 30) (+ lho 30 name-len))
+                               name))
+          (loop (+ o 46 name-len) (add1 seen))))))
+(check-strict-zip (hash-ref xlsx 'bytes))
+
 ;; ---------- docx twin fixture ----------
 
 (define docx-ct
