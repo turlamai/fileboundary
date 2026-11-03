@@ -2,61 +2,299 @@
     x:Class="RivetHost.MainWindow"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer>
-        <StackPanel Padding="28" Spacing="16" MaxWidth="720">
-            <TextBlock Text="FileBoundary" FontSize="32" FontWeight="SemiBold" />
-            <TextBlock Text="Windows file diagnostics · Read only"
-                       Opacity="0.75" />
-            <InfoBar x:Name="StatusBar" IsOpen="True" IsClosable="False"
-                     Severity="Informational" Message="Starting embedded Racket CS..." />
-            <TextBlock Text="File or directory path / 文件或文件夹路径" />
-            <TextBox x:Name="PathBox" PlaceholderText="C:\TestData\sample.pdf"
-                     AutomationProperties.AutomationId="scan-path" />
-            <TextBlock Text="Approved exported file / 已获授权导出的文件" />
-            <TextBox x:Name="ExportPathBox"
-                     PlaceholderText="D:\ApprovedExports\document.pdf"
-                     AutomationProperties.AutomationId="approved-export-path" />
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Button x:Name="ScanButton" Content="Scan / 扫描"
-                        AutomationProperties.AutomationId="scan-button"
-                        IsEnabled="False" Click="Scan_Click" />
-                <Button x:Name="DoctorButton" Content="Diagnostics / 诊断"
-                        AutomationProperties.AutomationId="doctor-button"
-                        IsEnabled="False" Click="Doctor_Click" />
-                <Button x:Name="VerifyButton" Content="Check Export / 验证导出"
-                        AutomationProperties.AutomationId="verify-export-button"
-                        IsEnabled="False" Click="Verify_Click" />
-                <Button x:Name="DecryptButton" Content="Decrypt / 解密"
-                        AutomationProperties.AutomationId="decrypt-button"
-                        IsEnabled="False" Click="Decrypt_Click" />
-                <Button x:Name="TwinButton" Content="Pad Twin / 恢复 Pad"
-                        AutomationProperties.AutomationId="pad-twin-button"
-                        IsEnabled="False" Click="Twin_Click" />
-            </StackPanel>
-            <TextBlock Text="Encrypted input path / 加密文件路径" />
-            <TextBox x:Name="DecryptInputBox"
-                     AutomationProperties.AutomationId="decrypt-input-path" />
-            <TextBlock Text="Decrypted output path / 解密输出路径" />
-            <TextBox x:Name="DecryptOutputBox"
-                     PlaceholderText="D:\Recovered\output.docx"
-                     AutomationProperties.AutomationId="decrypt-output-path" />
-            <TextBlock Text="Twin plaintext path / 明文副本路径" />
-            <TextBox x:Name="TwinPlainBox"
-                     AutomationProperties.AutomationId="twin-plain-path" />
-            <TextBlock Text="Twin ciphertext path / 密文副本路径" />
-            <TextBox x:Name="TwinCipherBox"
-                     AutomationProperties.AutomationId="twin-cipher-path" />
-            <TextBlock Text="Recovered pad output path / 恢复的 pad 输出路径" />
-            <TextBox x:Name="TwinOutputBox"
-                     PlaceholderText="D:\Keys\new-policy-pad.json"
-                     AutomationProperties.AutomationId="twin-output-path" />
-            <TextBlock Text="Results / 结果" FontWeight="SemiBold" FontSize="19" />
-            <TextBlock x:Name="OutputText" TextWrapping="Wrap"
-                       AutomationProperties.AutomationId="scan-result"
-                       Text="Choose a local file or folder. No file data is exported." />
-            <InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
-                     Title="Recovery status: unverified"
-                     Message="Recognized headers are not proof of plaintext or decryption."/>
-        </StackPanel>
-    </ScrollViewer>
+
+    <!--  Self-explanatory shell (issue #44): NavigationView with one panel
+          per feature, the panel's action button beside its own fields, and
+          a single shared result card. No internal jargon on screen.  -->
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <InfoBar Grid.Row="0" x:Name="StatusBar" IsOpen="True" IsClosable="False"
+                 Severity="Informational"
+                 Message="正在启动内置引擎... / Starting the embedded engine..." />
+
+        <NavigationView Grid.Row="1" x:Name="Nav"
+                        IsBackButtonVisible="Collapsed"
+                        IsSettingsVisible="False"
+                        PaneDisplayMode="Left"
+                        OpenPaneLength="216"
+                        SelectionChanged="Nav_SelectionChanged">
+
+            <NavigationView.MenuItems>
+                <NavigationViewItem Tag="scan" IsSelected="True"
+                                    AutomationProperties.AutomationId="nav-scan">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE721;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="扫描文件" />
+                        <TextBlock Text="Scan" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="doctor"
+                                    AutomationProperties.AutomationId="nav-doctor">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE7BA;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="加密驱动诊断" />
+                        <TextBlock Text="Diagnostics" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="verify"
+                                    AutomationProperties.AutomationId="nav-verify">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE73E;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="验证导出文件" />
+                        <TextBlock Text="Check Export" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="decrypt"
+                                    AutomationProperties.AutomationId="nav-decrypt">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE72E;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="解密文件" />
+                        <TextBlock Text="Decrypt" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+                <NavigationViewItem Tag="twin"
+                                    AutomationProperties.AutomationId="nav-twin">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE192;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="从文件对恢复密钥" />
+                        <TextBlock Text="Recover Key" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+            </NavigationView.MenuItems>
+
+            <NavigationView.Content>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  ================= panel host =================  -->
+                    <Grid Grid.Row="0" x:Name="PanelHost">
+
+                        <!--  scan (default panel)  -->
+                        <Grid x:Name="PanelScan">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="扫描文件" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="检查一个文件或整个文件夹里，哪些文件带已知的加密壳。只读操作，不会改动任何文件。识别出加密壳不代表文件能直接打开，也不代表已经解密。" />
+                                    <TextBlock Text="要检查的位置（文件或文件夹）"
+                                               Margin="0,10,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="PathBox"
+                                                 PlaceholderText="例如 C:\TestData 或 C:\TestData\sample.pdf"
+                                                 AutomationProperties.AutomationId="scan-path"
+                                                 KeyDown="PathBox_KeyDown" />
+                                        <Button Grid.Column="1" x:Name="BrowseScanButton"
+                                                Content="浏览…" Click="BrowseScan_Click" />
+                                    </Grid>
+                                    <Button x:Name="ScanButton" Content="开始扫描"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="Scan_Click"
+                                            AutomationProperties.AutomationId="scan-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!--  doctor  -->
+                        <Grid x:Name="PanelDoctor" Visibility="Collapsed">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="加密驱动诊断" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="查看这台电脑上的 Windows 过滤驱动——透明加密软件的驱动会出现在这里。只读枚举，不会改动任何驱动。权限不足导致条目缺失时，不代表电脑上没有加密驱动。" />
+                                    <Button x:Name="DoctorButton" Content="开始诊断"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="Doctor_Click"
+                                            AutomationProperties.AutomationId="doctor-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!--  verify export  -->
+                        <Grid x:Name="PanelVerify" Visibility="Collapsed">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="验证导出文件" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="把「已获授权导出的候选文件」和「加密原文件」比对，判断导出是否仍是加密状态。这是比对，不是解密；结果不证明恢复成功。任何情况下都不要删除加密原文件。" />
+                                    <TextBlock Text="加密原文件" Margin="0,10,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="VerifyOriginalBox"
+                                                 AutomationProperties.AutomationId="verify-original-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseVerifyOriginalButton"
+                                                Content="浏览…" Click="BrowseVerifyOriginal_Click" />
+                                    </Grid>
+                                    <TextBlock Text="已获授权导出的文件" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="VerifyExportBox"
+                                                 AutomationProperties.AutomationId="approved-export-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseVerifyExportButton"
+                                                Content="浏览…" Click="BrowseVerifyExport_Click" />
+                                    </Grid>
+                                    <Button x:Name="VerifyButton" Content="开始比对"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="Verify_Click"
+                                            AutomationProperties.AutomationId="verify-export-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!--  decrypt  -->
+                        <Grid x:Name="PanelDecrypt" Visibility="Collapsed">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="解密文件" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="把一个带加密壳的文件解密成普通文件，写到指定的输出位置。需要本机已配置密钥文件（环境变量 FILEBOUNDARY_PAD）。原始文件不会被改动；没有密钥时会直接失败，不会生成残缺文件。" />
+                                    <TextBlock Text="加密的输入文件" Margin="0,10,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="DecryptInputBox"
+                                                 AutomationProperties.AutomationId="decrypt-input-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseDecryptInputButton"
+                                                Content="浏览…" Click="BrowseDecryptInput_Click" />
+                                    </Grid>
+                                    <TextBlock Text="解密输出到" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="DecryptOutputBox"
+                                                 PlaceholderText="例如 D:\Recovered\output.docx"
+                                                 AutomationProperties.AutomationId="decrypt-output-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseDecryptOutputButton"
+                                                Content="选择位置…" Click="BrowseDecryptOutput_Click" />
+                                    </Grid>
+                                    <Button x:Name="DecryptButton" Content="开始解密"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="Decrypt_Click"
+                                            AutomationProperties.AutomationId="decrypt-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!--  twin / key recovery  -->
+                        <Grid x:Name="PanelTwin" Visibility="Collapsed">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="从文件对恢复密钥" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="准备同一文件的两个版本：一个能正常打开（明文版），一个是加密版。恢复出的加密密钥只写到你指定的文件，不会显示在界面上。两份文件的内容必须来自同一个文件。" />
+                                    <TextBlock Text="明文版本（能正常打开的文件）" Margin="0,10,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="TwinPlainBox"
+                                                 AutomationProperties.AutomationId="twin-plain-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseTwinPlainButton"
+                                                Content="浏览…" Click="BrowseTwinPlain_Click" />
+                                    </Grid>
+                                    <TextBlock Text="加密版本（同一文件的加密副本）" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="TwinCipherBox"
+                                                 AutomationProperties.AutomationId="twin-cipher-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseTwinCipherButton"
+                                                Content="浏览…" Click="BrowseTwinCipher_Click" />
+                                    </Grid>
+                                    <TextBlock Text="密钥保存到" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="TwinOutputBox"
+                                                 PlaceholderText="例如 D:\Keys\fileboundary.key.json"
+                                                 AutomationProperties.AutomationId="twin-output-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseTwinOutputButton"
+                                                Content="选择位置…" Click="BrowseTwinOutput_Click" />
+                                    </Grid>
+                                    <Button x:Name="TwinButton" Content="开始恢复"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="Twin_Click"
+                                            AutomationProperties.AutomationId="pad-twin-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+                    </Grid>
+
+                    <!--  ================= shared result card =================  -->
+                    <Border Grid.Row="1" x:Name="ResultCard" Visibility="Collapsed"
+                            Margin="36,0,36,16" Padding="16,12"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                        <StackPanel Spacing="8">
+                            <TextBlock x:Name="ResultTitle" FontWeight="SemiBold" />
+                            <TextBlock x:Name="ResultText" TextWrapping="Wrap"
+                                       IsTextSelectionEnabled="True"
+                                       FontSize="13"
+                                       AutomationProperties.AutomationId="scan-result" />
+                            <Button x:Name="CopyResultButton" Content="复制结果 Copy result"
+                                    Click="CopyResult_Click" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </NavigationView.Content>
+        </NavigationView>
+    </Grid>
 </Window>

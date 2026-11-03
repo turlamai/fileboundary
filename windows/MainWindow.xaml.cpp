@@ -8,7 +8,16 @@
 #include <cstdint>
 #include <stdexcept>
 
+#include <ShObjIdl_core.h>
+
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.UI.Xaml.Media.h>
+#include <winrt/Windows.ApplicationModel.DataTransfer.h>
+#include <winrt/Windows.Data.Json.h>
+#include <winrt/Windows.Graphics.h>
+#include <winrt/Windows.Storage.h>
+#include <winrt/Windows.Storage.Pickers.h>
+#include <winrt/Windows.System.h>
 
 namespace winrt::RivetHost::implementation {
 namespace {
@@ -67,6 +76,8 @@ rivet::windows::RacketRuntimeConfig runtime_config() {
 MainWindow::MainWindow() {
   InitializeComponent();
   Title(L"FileBoundary");
+  // Comfortable default; the layout is fluid and scrolls on smaller sizes.
+  AppWindow().ResizeClient(winrt::Windows::Graphics::SizeInt32{980, 660});
   // WinUI shows a generic placeholder in the title bar unless the
   // window is handed an icon explicitly; rivet embeds the project
   // icon in the exe at resource ID 1 (rivet-cli/build.rkt), so
@@ -97,7 +108,6 @@ void MainWindow::StopBackendOrderly() {
   }
 }
 
-
 winrt::fire_and_forget MainWindow::InitializeBackendAsync() {
   auto const dispatcher = DispatcherQueue();
   auto const weak = get_weak();
@@ -122,6 +132,144 @@ winrt::fire_and_forget MainWindow::InitializeBackendAsync() {
     });
   }
 }
+
+// ---------------- navigation ----------------
+
+void MainWindow::Nav_SelectionChanged(
+    winrt::Windows::Foundation::IInspectable const& sender,
+    Microsoft::UI::Xaml::Controls::NavigationViewSelectionChangedEventArgs const&) {
+  auto nav = sender.try_as<Microsoft::UI::Xaml::Controls::NavigationView>();
+  if (!nav) {
+    return;
+  }
+  auto item = nav.SelectedItem().try_as<Microsoft::UI::Xaml::Controls::NavigationViewItem>();
+  if (!item) {
+    return;
+  }
+  ShowPanel(std::wstring{winrt::unbox_value<winrt::hstring>(item.Tag()).c_str()});
+}
+
+void MainWindow::ShowPanel(std::wstring const& tag) {
+  PanelScan().Visibility(tag == L"scan" ? Microsoft::UI::Xaml::Visibility::Visible
+                                        : Microsoft::UI::Xaml::Visibility::Collapsed);
+  PanelDoctor().Visibility(tag == L"doctor" ? Microsoft::UI::Xaml::Visibility::Visible
+                                            : Microsoft::UI::Xaml::Visibility::Collapsed);
+  PanelVerify().Visibility(tag == L"verify" ? Microsoft::UI::Xaml::Visibility::Visible
+                                            : Microsoft::UI::Xaml::Visibility::Collapsed);
+  PanelDecrypt().Visibility(tag == L"decrypt" ? Microsoft::UI::Xaml::Visibility::Visible
+                                              : Microsoft::UI::Xaml::Visibility::Collapsed);
+  PanelTwin().Visibility(tag == L"twin" ? Microsoft::UI::Xaml::Visibility::Visible
+                                        : Microsoft::UI::Xaml::Visibility::Collapsed);
+}
+
+// ---------------- file pickers ----------------
+
+// Desktop WinUI 3 pickers must be HWND-associated or they silently no-op.
+// XAML Click handlers return void, so the coroutine bodies live in the
+// free functions below; PickSingleFileAsync/PickSaveFileAsync may resume
+// on a background thread, and the WinAppSDK DispatcherQueue has no
+// resume_foreground in this projection - completion hops via TryEnqueue.
+namespace {
+
+winrt::fire_and_forget PickOpenInto(Microsoft::UI::Xaml::Controls::TextBox box,
+                                    HWND hwnd,
+                                    Microsoft::UI::Dispatching::DispatcherQueue dq) {
+  try {
+    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
+    picker.FileTypeFilter().ReplaceAll({L"*"});
+    picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
+    auto file = co_await picker.PickSingleFileAsync();
+    dq.TryEnqueue([box, file]() mutable {
+      if (file) {
+        box.Text(file.Path());
+      }
+    });
+  } catch (...) {
+    // A cancelled picker is not an error; anything else stays silent here.
+  }
+}
+
+winrt::fire_and_forget PickSaveInto(
+    Microsoft::UI::Xaml::Controls::TextBox box, HWND hwnd,
+    Microsoft::UI::Dispatching::DispatcherQueue dq, winrt::hstring suggested,
+    std::vector<std::pair<winrt::hstring, std::vector<winrt::hstring>>> const&
+        choices) {
+  try {
+    winrt::Windows::Storage::Pickers::FileSavePicker picker;
+    picker.SuggestedFileName(suggested);
+    for (auto const& [label, extensions] : choices) {
+      std::vector<winrt::hstring> copy(extensions);
+      picker.FileTypeChoices().Insert(
+          label, winrt::single_threaded_vector<winrt::hstring>(std::move(copy)));
+    }
+    picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
+    auto file = co_await picker.PickSaveFileAsync();
+    dq.TryEnqueue([box, file]() mutable {
+      if (file) {
+        box.Text(file.Path());
+      }
+    });
+  } catch (...) {
+  }
+}
+
+}  // namespace
+
+void MainWindow::BrowseScan_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(PathBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseVerifyOriginal_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(VerifyOriginalBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseVerifyExport_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(VerifyExportBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseDecryptInput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(DecryptInputBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseDecryptOutput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  // Type choices give the dialog a sane filter without restricting the
+  // written bytes (the engine writes what it writes).
+  PickSaveInto(
+      DecryptOutputBox(), WindowHandle(), DispatcherQueue(), L"decrypted",
+      {{L"文档", {L".docx", L".xlsx", L".pptx"}}, {L"PDF", {L".pdf"}}});
+}
+
+void MainWindow::BrowseTwinPlain_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(TwinPlainBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseTwinCipher_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(TwinCipherBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseTwinOutput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickSaveInto(TwinOutputBox(), WindowHandle(), DispatcherQueue(),
+               L"fileboundary-key",
+               {{L"密钥文件", {L".json"}}});
+}
+
+// ---------------- panel actions ----------------
 
 void MainWindow::Scan_Click(
     winrt::Windows::Foundation::IInspectable const&,
@@ -153,6 +301,26 @@ void MainWindow::Twin_Click(
   RunTwinAsync();
 }
 
+void MainWindow::PathBox_KeyDown(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args) {
+  if (args.Key() == winrt::Windows::System::VirtualKey::Enter) {
+    RunScanAsync();
+  }
+}
+
+void MainWindow::CopyResult_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  try {
+    winrt::Windows::ApplicationModel::DataTransfer::DataPackage package;
+    package.SetText(last_result_text_);
+    winrt::Windows::ApplicationModel::DataTransfer::Clipboard::SetContent(package);
+  } catch (...) {
+    // Clipboard access can fail on locked-down sessions; not worth a dialog.
+  }
+}
+
 void MainWindow::SetBusyUi(bool busy) {
   ScanButton().IsEnabled(!busy && backend_ && backend_->running());
   DoctorButton().IsEnabled(!busy && backend_ && backend_->running());
@@ -161,9 +329,11 @@ void MainWindow::SetBusyUi(bool busy) {
   TwinButton().IsEnabled(!busy && backend_ && backend_->running());
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
-    StatusBar().Message(L"Read-only operation running...");
+    StatusBar().Message(L"正在处理，请稍候... / Working...");
   }
 }
+
+// ---------------- async runs ----------------
 
 void MainWindow::RunScanAsync() {
   auto backend = backend_;
@@ -173,7 +343,7 @@ void MainWindow::RunScanAsync() {
   }
   auto const path = winrt::to_string(PathBox().Text());
   if (path.empty()) {
-    SetErrorUi("Choose a file or directory path");
+    SetErrorUi("Choose a file or directory path first");
     return;
   }
   SetBusyUi(true);
@@ -186,7 +356,100 @@ void MainWindow::RunScanAsync() {
           try {
             auto message = result.get();
             dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowResult(message);
+              if (auto window = weak.get()) {
+                window->ShowTextResult(
+                    L"扫描完成",
+                    winrt::to_hstring(message),
+                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
+                    L"扫描完成：识别出加密壳不代表文件已解密。");
+              }
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
+}
+
+void MainWindow::RunDoctorAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.doctor_summary_async(
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) {
+                window->ShowTextResult(
+                    L"诊断完成",
+                    winrt::to_hstring(message),
+                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
+                    L"诊断完成：这只是枚举结果，不代表加密状态。");
+              }
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
+}
+
+void MainWindow::RunVerifyAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  auto const original = winrt::to_string(VerifyOriginalBox().Text());
+  auto const exported = winrt::to_string(VerifyExportBox().Text());
+  if (original.empty() || exported.empty()) {
+    SetErrorUi("Select both the encrypted original and the approved export");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.verify_export_summary_async(original, exported,
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) {
+                if (message.rfind("Authorized export comparison: FAILED", 0) == 0 ||
+                    message.rfind("Authorized export comparison: ERROR", 0) == 0) {
+                  window->ShowTextResult(
+                      L"比对结论：导出文件仍是加密状态（FAILED）",
+                      winrt::to_hstring(message),
+                      Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error,
+                      L"导出比对未通过。任何情况下都不要删除加密原文件。");
+                } else {
+                  window->ShowTextResult(
+                      L"比对结论：未发现阻碍（UNVERIFIED）",
+                      winrt::to_hstring(message),
+                      Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning,
+                      L"UNVERIFIED 不代表解密成功。请在授权的阅读器里独立验证导出文件。");
+                }
+              }
             });
           } catch (std::exception const& e) {
             auto error = std::string(e.what());
@@ -222,12 +485,14 @@ void MainWindow::RunDecryptAsync() {
           try {
             auto message = result.get();
             dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowResult(message);
+              if (auto window = weak.get()) window->ShowDecryptResult(message);
             });
           } catch (std::exception const& e) {
             auto error = std::string(e.what());
             dispatcher.TryEnqueue([weak, error = std::move(error)] {
-              if (auto window = weak.get()) window->SetErrorUi(error);
+              if (auto window = weak.get()) {
+                window->ShowFailed(error);
+              }
             });
           }
         });
@@ -259,12 +524,14 @@ void MainWindow::RunTwinAsync() {
           try {
             auto message = result.get();
             dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowResult(message);
+              if (auto window = weak.get()) window->ShowTwinResult(message);
             });
           } catch (std::exception const& e) {
             auto error = std::string(e.what());
             dispatcher.TryEnqueue([weak, error = std::move(error)] {
-              if (auto window = weak.get()) window->SetErrorUi(error);
+              if (auto window = weak.get()) {
+                window->ShowFailed(error);
+              }
             });
           }
         });
@@ -273,92 +540,137 @@ void MainWindow::RunTwinAsync() {
   }
 }
 
-void MainWindow::RunDoctorAsync() {
-  auto backend = backend_;
-  if (!backend || !backend->running()) {
-    SetErrorUi("Racket backend not running");
-    return;
-  }
-  SetBusyUi(true);
-  auto const dispatcher = DispatcherQueue();
-  auto const weak = get_weak();
-  try {
-    rivet_app::API api(*backend);
-    (void)api.doctor_summary_async(
-        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
-          try {
-            auto message = result.get();
-            dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowResult(message);
-            });
-          } catch (std::exception const& e) {
-            auto error = std::string(e.what());
-            dispatcher.TryEnqueue([weak, error = std::move(error)] {
-              if (auto window = weak.get()) window->SetErrorUi(error);
-            });
-          }
-        });
-  } catch (std::exception const& e) {
-    SetErrorUi(e.what());
-  }
-}
+// ---------------- result rendering ----------------
 
-void MainWindow::RunVerifyAsync() {
-  auto backend = backend_;
-  if (!backend || !backend->running()) {
-    SetErrorUi("Racket backend not running");
-    return;
-  }
-  auto const original = winrt::to_string(PathBox().Text());
-  auto const exported = winrt::to_string(ExportPathBox().Text());
-  if (original.empty() || exported.empty()) {
-    SetErrorUi("Select both the encrypted original and the approved export");
-    return;
-  }
-  SetBusyUi(true);
-  auto const dispatcher = DispatcherQueue();
-  auto const weak = get_weak();
-  try {
-    rivet_app::API api(*backend);
-    (void)api.verify_export_summary_async(original, exported,
-        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
-          try {
-            auto message = result.get();
-            dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowResult(message);
-            });
-          } catch (std::exception const& e) {
-            auto error = std::string(e.what());
-            dispatcher.TryEnqueue([weak, error = std::move(error)] {
-              if (auto window = weak.get()) window->SetErrorUi(error);
-            });
-          }
-        });
-  } catch (std::exception const& e) {
-    SetErrorUi(e.what());
-  }
-}
-
-void MainWindow::ShowResult(std::string const& message) {
-  OutputText().Text(winrt::to_hstring(message));
+void MainWindow::ShowTextResult(
+    std::wstring const& title, winrt::hstring const& body,
+    Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
+    std::wstring const& status_message) {
   SetBusyUi(false);
-  if (message.rfind("Authorized export comparison: FAILED", 0) == 0 ||
-      message.rfind("Authorized export comparison: ERROR", 0) == 0) {
-    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
-    StatusBar().Message(L"Export check failed or could not complete. No files were changed.");
-  } else if (message.rfind("Authorized export comparison: UNVERIFIED", 0) == 0) {
-    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
-    StatusBar().Message(L"Export is unverified, not confirmed as decrypted.");
-  } else {
+  ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+  ResultTitle().Text(title);
+  ResultText().Text(body);
+  last_result_text_ = winrt::hstring(body);
+  StatusBar().Severity(severity);
+  StatusBar().Message(status_message);
+}
+
+// The decrypt RPC returns JSON (names, booleans, counters — never file
+// contents). Turn it into a verdict a first-time reader understands.
+void MainWindow::ShowDecryptResult(std::string const& json) {
+  SetBusyUi(false);
+  try {
+    auto const obj =
+        winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(json));
+    auto const kind = obj.GetNamedString(L"kind");
+    auto const output = obj.GetNamedString(L"output");
+    std::wstring body;
+    std::wstring title;
+    if (kind == L"ooxml") {
+      auto const verified = static_cast<int>(obj.GetNamedNumber(L"verified"));
+      auto const total = static_cast<int>(obj.GetNamedNumber(L"total"));
+      title = (verified == total) ? L"解密成功" : L"解密完成（有校验未通过）";
+      body = L"逐条目完整性校验：" + std::to_wstring(verified) + L" / " +
+             std::to_wstring(total) + L" 通过\n";
+      auto const entries = obj.GetNamedArray(L"entries");
+      for (auto const& item : entries) {
+        auto const entry = item.GetObject();
+        auto const name = entry.GetNamedString(L"name");
+        auto const ok = entry.GetNamedBoolean(L"crcOk");
+        body += ok ? L"  \u2713 " : L"  \u2717 ";
+        body += std::wstring{winrt::to_hstring(name).c_str()};
+        body += L"\n";
+      }
+      body += (verified == total)
+          ? L"输出文件：" + std::wstring{winrt::to_hstring(output).c_str()} +
+                L"\n全部组成部分校验通过，输出文件可以直接打开。原始文件未被改动。"
+          : L"输出文件：" + std::wstring{winrt::to_hstring(output).c_str()} +
+                L"\n有组成部分未通过校验，请勿使用该输出文件。";
+    } else {
+      auto const head_rebuilt = obj.GetNamedBoolean(L"headRebuilt");
+      auto const pages = static_cast<int>(obj.GetNamedNumber(L"pages"));
+      auto const xref_checked = static_cast<int>(obj.GetNamedNumber(L"xrefChecked"));
+      auto const xref_bad = static_cast<int>(obj.GetNamedNumber(L"xrefBad"));
+      title = (xref_bad == 0) ? L"解密成功" : L"解密完成（交叉引用有损坏）";
+      body = L"PDF 已重建：共 " + std::to_wstring(pages) + L" 页，交叉引用校验 " +
+             std::to_wstring(xref_checked) + L" 处（损坏 " +
+             std::to_wstring(xref_bad) + L" 处）\n输出文件：" +
+             std::wstring{winrt::to_hstring(output).c_str()} +
+             (head_rebuilt ? L"\n文件头已重建，可用 PDF 阅读器直接打开。原始文件未被改动。"
+                           : L"\n原始文件未被改动。");
+    }
+    ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+    ResultTitle().Text(title);
+    ResultText().Text(body);
+    last_result_text_ = winrt::to_hstring(json);
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-    StatusBar().Message(L"Read-only operation finished");
+    StatusBar().Message(L"解密完成：输出已写入你选择的位置。");
+  } catch (...) {
+    // Malformed JSON from the engine should never crash the UI; fall back
+    // to showing the raw text.
+    ShowTextResult(L"解密完成", winrt::to_hstring(json),
+                   Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
+                   L"解密完成。");
   }
+}
+
+void MainWindow::ShowTwinResult(std::string const& json) {
+  SetBusyUi(false);
+  try {
+    auto const obj =
+        winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(json));
+    auto const covered = static_cast<int>(obj.GetNamedNumber(L"covered"));
+    auto const missing = static_cast<int>(obj.GetNamedNumber(L"missingCount"));
+    auto const complete = obj.GetNamedBoolean(L"complete");
+    auto const output = obj.GetNamedString(L"output");
+    std::wstring title;
+    std::wstring body;
+    if (complete) {
+      title = L"密钥恢复成功";
+      body = L"密钥已完整恢复（" + std::to_wstring(covered) + L" / 512 列），" +
+             L"保存为：" + std::wstring{winrt::to_hstring(output).c_str()} +
+             L"\n要用它解密文件：先设置环境变量 FILEBOUNDARY_PAD 指向这个密钥文件，"
+             L"再从「解密文件」面板操作。";
+    } else {
+      title = L"密钥只恢复了一部分";
+      body = L"只恢复了 " + std::to_wstring(covered) + L" / 512 列（缺 " +
+             std::to_wstring(missing) + L" 列）。\n"
+             L"两份文件的内容可能不是同一个文件。请确认「明文版本」能正常打开、"
+             L"「加密版本」是同一个文件的加密副本，然后重试。";
+    }
+    ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+    ResultTitle().Text(title);
+    ResultText().Text(body);
+    last_result_text_ = winrt::to_hstring(json);
+    StatusBar().Severity(complete
+                             ? Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success
+                             : Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
+    StatusBar().Message(complete ? L"密钥恢复成功。"
+                                 : L"密钥未完整恢复，需要重新提供文件对。");
+  } catch (...) {
+    ShowTextResult(L"恢复结果", winrt::to_hstring(json),
+                   Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
+                   L"恢复完成。");
+  }
+}
+
+void MainWindow::ShowFailed(std::string const& what) {
+  SetBusyUi(false);
+  ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+  ResultTitle().Text(L"操作没有完成");
+  std::wstring body = L"没有生成任何输出文件。\n原因：";
+  body += std::wstring{winrt::to_hstring(what).c_str()};
+  body += L"\n常见原因：本机未配置密钥文件（FILEBOUNDARY_PAD），或输入的不是加密文件。";
+  ResultText().Text(body);
+  last_result_text_ = winrt::to_hstring(what);
+  StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
+  StatusBar().Message(L"操作未完成：没有改动任何文件。");
 }
 
 void MainWindow::SetReadyUi() {
   SetBusyUi(false);
   StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-  StatusBar().Message(L"Embedded Racket CS ready");
+  StatusBar().Message(L"就绪。从左侧选择一个功能开始。 / Ready.");
 }
 
 void MainWindow::SetErrorUi(std::string const& message) {
