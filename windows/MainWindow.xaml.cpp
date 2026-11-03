@@ -150,6 +150,9 @@ void MainWindow::Nav_SelectionChanged(
 }
 
 void MainWindow::ShowPanel(std::wstring const& tag) {
+  // a result belongs to the panel that produced it: switching panels
+  // retires it, otherwise a stale '诊断完成' card follows the user around
+  ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
   PanelScan().Visibility(tag == L"scan" ? Microsoft::UI::Xaml::Visibility::Visible
                                         : Microsoft::UI::Xaml::Visibility::Collapsed);
   PanelDoctor().Visibility(tag == L"doctor" ? Microsoft::UI::Xaml::Visibility::Visible
