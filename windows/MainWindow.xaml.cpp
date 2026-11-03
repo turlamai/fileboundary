@@ -602,7 +602,7 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
     ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
     ResultTitle().Text(title);
     ResultText().Text(body);
-    last_result_text_ = winrt::hstring(json);
+    last_result_text_ = winrt::to_hstring(json);
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
     StatusBar().Message(L"解密完成：输出已写入你选择的位置。");
   } catch (...) {
@@ -641,7 +641,7 @@ void MainWindow::ShowTwinResult(std::string const& json) {
     ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
     ResultTitle().Text(title);
     ResultText().Text(body);
-    last_result_text_ = winrt::hstring(json);
+    last_result_text_ = winrt::to_hstring(json);
     StatusBar().Severity(complete
                              ? Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success
                              : Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
