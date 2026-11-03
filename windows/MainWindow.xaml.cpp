@@ -146,7 +146,7 @@ void MainWindow::Nav_SelectionChanged(
   if (!item) {
     return;
   }
-  ShowPanel(std::wstring{winrt::to_hstring(item.Tag()).c_str()});
+  ShowPanel(std::wstring{winrt::unbox_value<winrt::hstring>(item.Tag()).c_str()});
 }
 
 void MainWindow::ShowPanel(std::wstring const& tag) {
@@ -165,160 +165,108 @@ void MainWindow::ShowPanel(std::wstring const& tag) {
 // ---------------- file pickers ----------------
 
 // Desktop WinUI 3 pickers must be HWND-associated or they silently no-op.
-// The co_await resumes wherever the picker completes; force the foreground
-// dispatcher before touching the TextBox.
-winrt::fire_and_forget MainWindow::BrowseScan_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = PathBox();
+// XAML Click handlers return void, so the coroutine bodies live in the
+// free functions below; PickSingleFileAsync/PickSaveFileAsync may resume
+// on a background thread, and the WinAppSDK DispatcherQueue has no
+// resume_foreground in this projection - completion hops via TryEnqueue.
+namespace {
+
+winrt::fire_and_forget PickOpenInto(Microsoft::UI::Xaml::Controls::TextBox box,
+                                    HWND hwnd,
+                                    Microsoft::UI::Dispatching::DispatcherQueue dq) {
   try {
     winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
+    picker.FileTypeFilter().ReplaceAll({L"*"});
+    picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
     auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
+    dq.TryEnqueue([box, file]() mutable {
+      if (file) {
+        box.Text(file.Path());
+      }
+    });
   } catch (...) {
     // A cancelled picker is not an error; anything else stays silent here.
   }
 }
 
-winrt::fire_and_forget MainWindow::BrowseVerifyOriginal_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = VerifyOriginalBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
-}
-
-winrt::fire_and_forget MainWindow::BrowseVerifyExport_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = VerifyExportBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
-}
-
-winrt::fire_and_forget MainWindow::BrowseDecryptInput_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = DecryptInputBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
-}
-
-// Save-location pickers: file type choices give the dialog a sane filter
-// without restricting the written bytes (the engine writes what it writes).
-winrt::fire_and_forget MainWindow::BrowseDecryptOutput_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = DecryptOutputBox();
+winrt::fire_and_forget PickSaveInto(
+    Microsoft::UI::Xaml::Controls::TextBox box, HWND hwnd,
+    Microsoft::UI::Dispatching::DispatcherQueue dq, winrt::hstring suggested,
+    std::vector<std::pair<winrt::hstring, std::vector<winrt::hstring>>> const&
+        choices) {
   try {
     winrt::Windows::Storage::Pickers::FileSavePicker picker;
-    picker.SuggestedFileName(L"decrypted");
-    picker.FileTypeChoices().Insert(
-        L"文档", winrt::single_threaded_vector<winrt::hstring>(
-                    {L".docx", L".xlsx", L".pptx"}));
-    picker.FileTypeChoices().Insert(
-        L"PDF", winrt::single_threaded_vector<winrt::hstring>({L".pdf"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
+    picker.SuggestedFileName(suggested);
+    for (auto const& [label, extensions] : choices) {
+      picker.FileTypeChoices().Insert(
+          label,
+          winrt::single_threaded_vector<winrt::hstring>(extensions));
+    }
+    picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
     auto file = co_await picker.PickSaveFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
+    dq.TryEnqueue([box, file]() mutable {
+      if (file) {
+        box.Text(file.Path());
+      }
+    });
   } catch (...) {
   }
 }
 
-winrt::fire_and_forget MainWindow::BrowseTwinPlain_Click(
+}  // namespace
+
+void MainWindow::BrowseScan_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = TwinPlainBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
+  PickOpenInto(PathBox(), WindowHandle(), DispatcherQueue());
 }
 
-winrt::fire_and_forget MainWindow::BrowseTwinCipher_Click(
+void MainWindow::BrowseVerifyOriginal_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = TwinCipherBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll(winrt::single_threaded_vector<winrt::hstring>({L"*"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
+  PickOpenInto(VerifyOriginalBox(), WindowHandle(), DispatcherQueue());
 }
 
-winrt::fire_and_forget MainWindow::BrowseTwinOutput_Click(
+void MainWindow::BrowseVerifyExport_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  auto const dq = DispatcherQueue();
-  auto weak_box = TwinOutputBox();
-  try {
-    winrt::Windows::Storage::Pickers::FileSavePicker picker;
-    picker.SuggestedFileName(L"fileboundary-key");
-    picker.FileTypeChoices().Insert(
-        L"密钥文件", winrt::single_threaded_vector<winrt::hstring>({L".json"}));
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSaveFileAsync();
-    co_await winrt::resume_foreground(dq);
-    if (file && weak_box) {
-      weak_box.Text(file.Path());
-    }
-  } catch (...) {
-  }
+  PickOpenInto(VerifyExportBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseDecryptInput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(DecryptInputBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseDecryptOutput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  // Type choices give the dialog a sane filter without restricting the
+  // written bytes (the engine writes what it writes).
+  PickSaveInto(
+      DecryptOutputBox(), WindowHandle(), DispatcherQueue(), L"decrypted",
+      {{L"文档", {L".docx", L".xlsx", L".pptx"}}, {L"PDF", {L".pdf"}}});
+}
+
+void MainWindow::BrowseTwinPlain_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(TwinPlainBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseTwinCipher_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(TwinCipherBox(), WindowHandle(), DispatcherQueue());
+}
+
+void MainWindow::BrowseTwinOutput_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickSaveInto(TwinOutputBox(), WindowHandle(), DispatcherQueue(),
+               L"fileboundary-key",
+               {{L"密钥文件", {L".json"}}});
 }
 
 // ---------------- panel actions ----------------
