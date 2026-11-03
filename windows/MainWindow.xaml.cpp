@@ -198,9 +198,9 @@ winrt::fire_and_forget PickSaveInto(
     winrt::Windows::Storage::Pickers::FileSavePicker picker;
     picker.SuggestedFileName(suggested);
     for (auto const& [label, extensions] : choices) {
+      std::vector<winrt::hstring> copy(extensions);
       picker.FileTypeChoices().Insert(
-          label,
-          winrt::single_threaded_vector<winrt::hstring>(extensions));
+          label, winrt::single_threaded_vector<winrt::hstring>(std::move(copy)));
     }
     picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
     auto file = co_await picker.PickSaveFileAsync();
@@ -491,7 +491,7 @@ void MainWindow::RunDecryptAsync() {
             auto error = std::string(e.what());
             dispatcher.TryEnqueue([weak, error = std::move(error)] {
               if (auto window = weak.get()) {
-                window->ShowFailed(message, winrt::to_hstring(error));
+                window->ShowFailed(error);
               }
             });
           }
@@ -530,7 +530,7 @@ void MainWindow::RunTwinAsync() {
             auto error = std::string(e.what());
             dispatcher.TryEnqueue([weak, error = std::move(error)] {
               if (auto window = weak.get()) {
-                window->ShowFailed(message, winrt::to_hstring(error));
+                window->ShowFailed(error);
               }
             });
           }
@@ -543,7 +543,7 @@ void MainWindow::RunTwinAsync() {
 // ---------------- result rendering ----------------
 
 void MainWindow::ShowTextResult(
-    std::wstring const& title, std::wstring const& body,
+    std::wstring const& title, winrt::hstring const& body,
     Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
     std::wstring const& status_message) {
   SetBusyUi(false);
@@ -654,18 +654,15 @@ void MainWindow::ShowTwinResult(std::string const& json) {
   }
 }
 
-void MainWindow::ShowFailed(std::string const& message, std::wstring const& what) {
+void MainWindow::ShowFailed(std::string const& what) {
   SetBusyUi(false);
   ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
   ResultTitle().Text(L"操作没有完成");
   std::wstring body = L"没有生成任何输出文件。\n原因：";
-  body += what;
-  if (!message.empty() && message != what) {
-    body += L"\n" + std::wstring{winrt::to_hstring(message).c_str()};
-  }
+  body += std::wstring{winrt::to_hstring(what).c_str()};
   body += L"\n常见原因：本机未配置密钥文件（FILEBOUNDARY_PAD），或输入的不是加密文件。";
   ResultText().Text(body);
-  last_result_text_ = winrt::hstring(message);
+  last_result_text_ = winrt::to_hstring(what);
   StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
   StatusBar().Message(L"操作未完成：没有改动任何文件。");
 }

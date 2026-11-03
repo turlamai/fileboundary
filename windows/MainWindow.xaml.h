@@ -70,12 +70,12 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunTwinAsync();
   void SetBusyUi(bool busy);
   void ShowPanel(std::wstring const& tag);
-  void ShowTextResult(std::wstring const& title, std::wstring const& body,
+  void ShowTextResult(std::wstring const& title, winrt::hstring const& body,
                       Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
                       std::wstring const& status_message);
   void ShowDecryptResult(std::string const& json);
   void ShowTwinResult(std::string const& json);
-  void ShowFailed(std::string const& message, std::wstring const& what);
+  void ShowFailed(std::string const& what);
   void SetReadyUi();
   void SetErrorUi(std::string const& message);
 
