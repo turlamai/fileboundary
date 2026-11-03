@@ -43,7 +43,9 @@ try {
 
   # discoverability layout (ADR-0010): exactly one top-level directory
   # containing README.txt, the launcher and the host exe
-  $topLevel = Get-ChildItem -LiteralPath $extract | ForEach-Object { $_.Name }
+  # @() wrapper: a single-entry pipeline yields a scalar and .Count on a
+  # scalar string throws under Set-StrictMode
+  $topLevel = @(Get-ChildItem -LiteralPath $extract | ForEach-Object { $_.Name })
   Assert-True ($topLevel.Count -eq 1) "portable zip must contain exactly one top-level entry, found: $($topLevel -join ', ')"
   $topDir = Join-Path $extract $topLevel[0]
   Assert-True (Test-Path $topDir -PathType Container) "top-level entry is not a directory"
