@@ -87,7 +87,7 @@
                     <!--  ================= panel host =================  -->
                     <Grid Grid.Row="0" x:Name="PanelHost">
 
-                        <!--  -------- scan (default panel) --------  -->
+                        <!--  scan (default panel)  -->
                         <Grid x:Name="PanelScan">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
@@ -120,7 +120,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  -------- doctor --------  -->
+                        <!--  doctor  -->
                         <Grid x:Name="PanelDoctor" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
@@ -139,7 +139,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  -------- verify export --------  -->
+                        <!--  verify export  -->
                         <Grid x:Name="PanelVerify" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
@@ -180,7 +180,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  -------- decrypt --------  -->
+                        <!--  decrypt  -->
                         <Grid x:Name="PanelDecrypt" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
@@ -222,7 +222,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  -------- twin / key recovery --------  -->
+                        <!--  twin / key recovery  -->
                         <Grid x:Name="PanelTwin" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
