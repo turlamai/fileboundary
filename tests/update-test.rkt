@@ -10,7 +10,8 @@
          racket/path
          file/zip
          "../src/engine/sha256.rkt"
-         "../src/engine/update.rkt")
+         "../src/engine/update.rkt"
+         "../src/version.rkt")
 
 ;; ---------- SHA-256 (FIPS 180-4 vectors) ----------
 
@@ -184,7 +185,9 @@
 (check-equal? sc1 0)
 (check-equal? (hash-ref d1 'errors) '())
 (define d1-data (hash-ref d1 'data))
-(check-equal? (hash-ref d1-data 'runningVersion) "0.2.0+dev")
+;; the CLI reports its live version (single source: rivet.rktd), so
+;; the assertion tracks product-version instead of a frozen literal
+(check-equal? (hash-ref d1-data 'runningVersion) product-version)
 (check-true (hash-has-key? d1-data 'installRoot))
 
 (define manifest-path (make-temporary-file "fb-manifest~a.json"))
