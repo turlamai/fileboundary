@@ -7,7 +7,9 @@
 (require rackunit
          json
          racket/file
+         racket/list
          racket/path
+         racket/string
          file/zip
          "../src/engine/sha256.rkt"
          "../src/engine/update.rkt"
@@ -42,10 +44,20 @@
 
 ;; ---------- manifest ----------
 
+;; a version strictly above the running product version, computed from
+;; the single version source: the updateAvailable check below invokes
+;; the CLI, so the manifest version must stay ahead across bumps
+(define next-version
+  (let* ([parts (string-split version ".")]
+         [patch (string->number (list-ref parts 2))])
+    (string-join (append (take parts 2)
+                         (list (number->string (add1 patch))))
+                 ".")))
+
 (define valid-manifest
   (hash 'schemaVersion 1
         'channel "stable"
-        'version "0.3.0"
+        'version next-version
         'commit "abc1234"
         'created "2026-10-30T00:00:00Z"
         'package (hash 'kind "full" 'name "FB.zip" 'bytes 123
@@ -65,8 +77,8 @@
 
 (define check-result (check-update valid-manifest "0.1.0"))
 (check-equal? (hash-ref check-result 'action) "update")
-(check-equal? (hash-ref check-result 'latestVersion) "0.3.0")
-(check-equal? (hash-ref (check-update valid-manifest "0.3.0") 'action) "none")
+(check-equal? (hash-ref check-result 'latestVersion) next-version)
+(check-equal? (hash-ref (check-update valid-manifest next-version) 'action) "none")
 
 ;; ---------- package builders ----------
 
@@ -234,4 +246,4 @@
 (check-equal? (hash-ref d2 'errors) '())
 (define d2-data (hash-ref d2 'data))
 (check-equal? (hash-ref d2-data 'updateAvailable) #t)
-(check-equal? (hash-ref d2-data 'latestVersion) "0.3.0")
+(check-equal? (hash-ref d2-data 'latestVersion) next-version)
