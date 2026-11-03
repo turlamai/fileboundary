@@ -137,7 +137,7 @@ winrt::fire_and_forget MainWindow::InitializeBackendAsync() {
 
 void MainWindow::Nav_SelectionChanged(
     winrt::Windows::Foundation::IInspectable const& sender,
-    Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&) {
+    Microsoft::UI::Xaml::Controls::NavigationViewSelectionChangedEventArgs const&) {
   auto nav = sender.try_as<Microsoft::UI::Xaml::Controls::NavigationView>();
   if (!nav) {
     return;
