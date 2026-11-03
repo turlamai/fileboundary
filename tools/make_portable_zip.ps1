@@ -1,30 +1,45 @@
 # Packages the built application directory into the versioned portable
-# zip with SHA256SUMS.txt and per-file .sha256 checksums (issue #9;
-# ADR-0008 channel). Used identically by CI and locally, and every zip
-# entry carries a fixed timestamp, so rebuilding from the same commit
-# reproduces the artifact byte-for-byte on the same toolchain.
+# zip (issue #9, revised by ADR-0010 / issue #42): single top-level
+# directory (family layout, matches taskly/shuttle), optional extra
+# files (README.txt, launcher) injected at the top-directory root,
+# SHA256SUMS.txt and per-file .sha256 checksums. Used identically by CI
+# and locally, and every zip entry carries a fixed timestamp, so
+# rebuilding from the same inputs reproduces the artifact byte-for-byte
+# on the same toolchain.
 #
 # Usage:
-#   pwsh tools/make_portable_zip.ps1 -AppDir dist/fileboundary-windows-x64 `
-#       -Version 0.2.1 -OutDir dist/release
+#   pwsh tools/make_portable_zip.ps1 -AppDir dist/staging/fileboundary-windows-x64 `
+#       -Version 0.2.1 -OutDir dist/release `
+#       [-TopDirName FileBoundary-windows-x64] `
+#       [-ExtraDir tools/portable]
 # Produces:
-#   dist/release/FileBoundary-v<version>-windows-x86_64.zip
+#   dist/release/fileboundary-<version>-windows-x64.zip
 #   dist/release/SHA256SUMS.txt
 #   dist/release/<asset>.sha256           (one sidecar per asset)
 param(
   [Parameter(Mandatory = $true)][string]$AppDir,
   [Parameter(Mandatory = $true)][string]$Version,
-  [Parameter(Mandatory = $true)][string]$OutDir
+  [Parameter(Mandatory = $true)][string]$OutDir,
+  [string]$TopDirName = 'fileboundary-windows-x64',
+  # every file in this directory is injected at the zip top-directory
+  # root (README.txt, launcher, ...); a single path - no list syntax,
+  # so invocation is identical from bash, -File and native pwsh
+  [string]$ExtraDir = ''
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$extraFiles = @()
+if ($ExtraDir) {
+  if (!(Test-Path $ExtraDir -PathType Container)) { throw "ExtraDir not found: $ExtraDir" }
+  $extraFiles = @(Get-ChildItem -LiteralPath $ExtraDir -File | Sort-Object Name | ForEach-Object { $_.FullName })
+}
 
 if (!(Test-Path (Join-Path $AppDir 'RivetHost.exe'))) {
   throw "AppDir does not look like a built package (missing RivetHost.exe): $AppDir"
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
-$name = "FileBoundary-v$Version-windows-x86_64"
+$name = "fileboundary-$Version-windows-x64"
 $zipPath = Join-Path $OutDir "$name.zip"
 
 Add-Type -AssemblyName System.IO.Compression
@@ -38,19 +53,29 @@ if (Test-Path $zipPath) { Remove-Item -LiteralPath $zipPath }
 $fs = [System.IO.File]::Open($zipPath, [System.IO.FileMode]::CreateNew)
 $archive = New-Object System.IO.Compression.ZipArchive($fs, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
-  $root = (Resolve-Path $AppDir).Path
-  if (!$root.EndsWith('\')) { $root += '\' }
   $files = Get-ChildItem -LiteralPath $AppDir -Recurse -File | Sort-Object FullName
   foreach ($file in $files) {
     # manual relative path: [System.IO.Path]::GetRelativePath is missing
     # on Windows PowerShell 5.1 (.NET Framework) and this script runs
     # both locally and on CI
+    $root = (Resolve-Path $AppDir).Path
+    if (!$root.EndsWith('\')) { $root += '\' }
     $rel = $file.FullName.Substring($root.Length).Replace('\', '/')
-    $entry = $archive.CreateEntry($rel, [System.IO.Compression.CompressionLevel]::Optimal)
+    $entry = $archive.CreateEntry("$TopDirName/$rel", [System.IO.Compression.CompressionLevel]::Optimal)
     $entry.LastWriteTime = $fixedTimestamp
     $es = $entry.Open()
     try {
       $in = [System.IO.File]::OpenRead($file.FullName)
+      try { $in.CopyTo($es) } finally { $in.Dispose() }
+    } finally { $es.Dispose() }
+  }
+  foreach ($extra in $extraFiles) {
+    if (!(Test-Path $extra)) { throw "ExtraFile not found: $extra" }
+    $entry = $archive.CreateEntry("$TopDirName/$(Split-Path -Leaf $extra)", [System.IO.Compression.CompressionLevel]::Optimal)
+    $entry.LastWriteTime = $fixedTimestamp
+    $es = $entry.Open()
+    try {
+      $in = [System.IO.File]::OpenRead((Resolve-Path $extra).Path)
       try { $in.CopyTo($es) } finally { $in.Dispose() }
     } finally { $es.Dispose() }
   }
@@ -77,5 +102,5 @@ Get-ChildItem -LiteralPath $OutDir -File |
 $sumsPath = Join-Path $OutDir 'SHA256SUMS.txt'
 Set-Content -LiteralPath $sumsPath -Value $sums -Encoding ascii
 
-Write-Output "Packaged $zipPath"
+Write-Output "Packaged $zipPath ($TopDirName/)"
 Write-Output "Wrote $sumsPath with $($sums.Count) entries"

@@ -96,7 +96,9 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    stem = f"FileBoundary-{args.version}-windows-x64"
+    # family naming (ADR-0010); "-update" distinguishes the update-channel
+    # full package from the portable zip of the same version
+    stem = f"fileboundary-{args.version}-windows-x64-update"
     full_zip = out / f"{stem}.zip"
     table = file_table(src, args.version, skip={"filetable.json"})
     make_zip(src, full_zip, embed={"filetable.json": table})
@@ -112,7 +114,7 @@ def main() -> int:
         old = Path(args.base_dir)
         ops, payload = tree_diff(old, src)
         if ops:
-            delta_stem = f"FileBoundary-delta-{args.base_version}-to-{args.version}"
+            delta_stem = f"fileboundary-delta-{args.base_version}-to-{args.version}"
             delta_zip = out / f"{delta_stem}.zip"
             with zipfile.ZipFile(delta_zip, "w", zipfile.ZIP_DEFLATED) as z:
                 for rel, p in payload.items():

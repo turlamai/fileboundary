@@ -1,6 +1,6 @@
 # ADR-0008: Release channel and explicit self-update
 
-- **Status:** accepted
+- **Status:** accepted; installer rejection revised by [ADR-0010](ADR-0010-windows-msi-install-face.md) (2026-11-03): the MSI is now the primary Windows install face, channel and explicit-update rules unchanged
 - **Date:** 2026-10-30
 - **Deciders:** owner (turlamai), explicit directive in session
 - **Relates to:** [ADR-0001](ADR-0001-project-scope-and-boundaries.md) (local-first clause), benchmark: Taskly's `X.Y.Z+<commit>` versioning and `current/` install layout

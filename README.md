@@ -10,7 +10,7 @@
 
 - **Shipped (v0.2.0)**: `decrypt` (wrapped OOXML reassembled with per-entry CRC verification; wrapped PDFs rebuilt with a semantic head + xref spot-check), `pad twin` (policy-pad recovery from one aligned plaintext/ciphertext pair), and the self-update channel (`update now` against GitHub Releases with authenticated private-asset access and guarded delta packages). The release ships the source distribution + manifest; a bare directory updates 0.0.0 → 0.2.0 through the live channel (end-to-end verified).
 - **Implemented and locally verified**: the full test suite (194 tests + JSON Schema contract validation) is green on Windows, including end-to-end decryption of three pinned real specimens ([ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)). CI runs are temporarily blocked by an account billing issue — merge gates are handled by review until it is restored.
-- **Release train** ([#9](https://github.com/turlamai/fileboundary/issues/9), [ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)): a tag-triggered [release workflow](.github/workflows/release.yml) builds the portable package, the update-channel full package + `manifest.json`, a source tarball, `SHA256SUMS.txt` and per-file checksums, smoke-tests the artifacts (clean extraction, GUI boot probe, CLI envelopes, update-apply into a clean install root) and publishes the private release with English notes. Per ADR-0008 there is **no MSI/MSIX installer by design** — install = unpack the portable zip, or `update apply` into `%LOCALAPPDATA%\FileBoundary`.
+- **Release train** ([#9](https://github.com/turlamai/fileboundary/issues/9), [ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)): a tag-triggered [release workflow](.github/workflows/release.yml) builds the portable package, the update-channel full package + `manifest.json`, a source tarball, `SHA256SUMS.txt` and per-file checksums, smoke-tests the artifacts (clean extraction, GUI boot probe, CLI envelopes, update-apply into a clean install root) and publishes the private release with English notes. Per ADR-0010 (revising ADR-0008) the **MSI is the primary install face**; the portable zip and the explicit self-update commands remain.
 - The GUI ships read-only scan, Filter Manager diagnostics, Check Export, the **Decrypt panel** and the **Pad Twin panel** over the same engine entries as the CLI ([#34](https://github.com/turlamai/fileboundary/issues/34), closed).
 
 The historical C#/WinForms v0.1 is a reference prototype outside this repository, not the selected production architecture (see [Issue #1](https://github.com/turlamai/fileboundary/issues/1)).
@@ -23,7 +23,8 @@ The Windows core CI now also checks `version`, `scan`, `doctor` and `verify` aga
 
 ### Install (Windows)
 
-- **Portable GUI (no prerequisites)** — download `FileBoundary-v<version>-windows-x86_64.zip` from [Releases](https://github.com/turlamai/fileboundary/releases), unzip anywhere, run `RivetHost.exe`.
+- **Installer (recommended)** — run `fileboundary-<version>-windows-x64.msi` from [Releases](https://github.com/turlamai/fileboundary/releases): per-machine install with Start-menu and desktop shortcuts ([ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md)).
+- **Portable GUI (no prerequisites)** — download `fileboundary-<version>-windows-x64.zip`, unzip anywhere, and run `RivetHost.exe` (or `FileBoundary.cmd`); the `README.txt` inside explains the panels.
 - **Update channel** — an existing install moves to a new version with `update now` (or offline `update apply --package <zip> --manifest <manifest.json>`); installs live under `%LOCALAPPDATA%\FileBoundary\releases\<version>\`. There is no MSI/MSIX by design ([ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)).
 - **Headless CLI** — requires Racket CS 9.3; use the source distribution (`FileBoundary-v<version>-source.tar.gz`).
 
@@ -148,7 +149,7 @@ The current experimental core and JSON CLI use **Racket**. The intended Windows-
 | Windows CI and automated tests | [#6](https://github.com/turlamai/fileboundary/issues/6) | done (workflows live; runner temporarily blocked by account billing) |
 | Versioned JSON CLI contract | [#7](https://github.com/turlamai/fileboundary/issues/7) | done (schemas + [CI contract gate](contracts/command-data-v1.schema.json)) |
 | Bilingual documentation | [#8](https://github.com/turlamai/fileboundary/issues/8) | done (README mirror + ADR/decision records) |
-| Windows portable release train | [#9](https://github.com/turlamai/fileboundary/issues/9) | release workflow + smoke live (tag-triggered, [ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md) — no installer by design); first train-run tag pending |
+| Windows release train (MSI + portable) | [#9](https://github.com/turlamai/fileboundary/issues/9), [#42](https://github.com/turlamai/fileboundary/issues/42) | release workflow + smoke live (tag-triggered); MSI install face per [ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md) rides the next version |
 
 ## Development
 

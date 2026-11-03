@@ -1,11 +1,11 @@
 name: FileBoundary release
 
-# Tag-triggered release train (issue #9, ADR-0008): build → package →
-# checksum → smoke → publish a private GitHub Release with English notes
-# and evidence. `workflow_dispatch` runs the identical pipeline in
-# dry-run mode (everything except publishing) so the train itself is
-# CI-proven before any tag is cut. No installer: ADR-0008 supersedes it
-# with the portable package + explicit self-update channel.
+# Tag-triggered release train (issue #9; install face revised by
+# ADR-0010 / issue #42): build → MSI + portable → checksums → smoke →
+# publish a private GitHub Release with English notes and evidence.
+# `workflow_dispatch` runs the identical pipeline in dry-run mode
+# (everything except publishing) so the train itself is CI-proven
+# before any tag is cut.
 
 on:
   push:
@@ -51,6 +51,15 @@ jobs:
           raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
 
+      # rivet's MSI builder drives WiX 5 (the 7.x line aborts with WIX7015
+      # unless a maintenance-fee EULA is accepted, so pin 5.x); the UI/Util
+      # wixext extensions are installed on demand by rivet itself
+      - name: Install WiX (v5; rivet's MSI toolchain)
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          if ($LASTEXITCODE -ne 0) { throw "WiX installation failed" }
+
       - name: Resolve version and enforce the tag contract
         shell: pwsh
         run: |
@@ -70,16 +79,21 @@ jobs:
           }
           Write-Output "Release version: v$version (build $shortSha)"
 
-      - name: Build and package
+      # one shot: builds the host, packages, produces the perMachine MSI
+      # (start-menu + desktop shortcuts) and the portable zip with family
+      # naming, plus SBOM/notices; --without-updates keeps FileBoundary's
+      # own update-channel format (rivet's signed manifest is not adopted).
+      # The unpacked app tree is deleted by rivet afterwards (the taskly
+      # 0.1.3 lesson), so the update manifest step re-extracts it from the
+      # portable zip.
+      - name: Release build (MSI + portable + SBOM + notices)
         shell: pwsh
         run: |
-          raco rivet build
-          if ($LASTEXITCODE -ne 0) { throw "FileBoundary native host build failed" }
-          raco rivet package
-          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package failed" }
-          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination dist/fileboundary-windows-x64/THIRD_PARTY_NOTICES.md
-          raco rivet verify
-          if ($LASTEXITCODE -ne 0) { throw "FileBoundary package verification failed" }
+          raco rivet release --development --without-updates
+          if ($LASTEXITCODE -ne 0) { throw "FileBoundary release build failed" }
+          $msi = Get-ChildItem dist -Filter "fileboundary-$($env:VERSION)-windows-x64.msi"
+          if (!$msi) { throw "MSI missing from rivet release output: dist/$(Get-ChildItem dist -Name | Out-String)" }
+          Write-Output "rivet release produced: $((Get-ChildItem dist -File).Name -join ', ')"
 
       - name: Build release artifacts
         shell: pwsh
@@ -89,11 +103,25 @@ jobs:
           # source distribution (CLI requires Racket CS 9.3; documented)
           git archive --format=tar.gz --prefix="FileBoundary-v$version/" -o "dist/release/FileBoundary-v$version-source.tar.gz" HEAD
           if ($LASTEXITCODE -ne 0) { throw "source tarball failed" }
+          # MSI rides into the release set; sidecars come from the zip step
+          Copy-Item -LiteralPath "dist/fileboundary-$version-windows-x64.msi" -Destination dist/release/
+          # staging tree for the update channel: extract rivet's portable zip
+          $staging = Join-Path $env:RUNNER_TEMP "fb-staging-$version"
+          Expand-Archive -LiteralPath "dist/fileboundary-$version-windows-x64.zip" -DestinationPath $staging
+          $appDir = Join-Path $staging "fileboundary-windows-x64"
+          if (!(Test-Path (Join-Path $appDir 'RivetHost.exe'))) { throw "unexpected portable zip layout: no fileboundary-windows-x64/ top directory" }
+          # attribution notice travels in the portable zip (the smoke asserts it)
+          Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination (Join-Path $appDir 'THIRD_PARTY_NOTICES.md')
           # update-channel full package + release manifest (ADR-0008)
-          python tools/make_update_manifest.py --dir dist/fileboundary-windows-x64 --version $version --commit $env:SHORT_SHA --out dist/release --channel stable --package-url-base "https://github.com/${{ github.repository }}/releases/download/v$version/"
+          python tools/make_update_manifest.py --dir $appDir --version $version --commit $env:SHORT_SHA --out dist/release --channel stable --package-url-base "https://github.com/${{ github.repository }}/releases/download/v$version/"
           if ($LASTEXITCODE -ne 0) { throw "update manifest failed" }
-          # versioned portable zip + SHA256SUMS + per-file sidecars
-          pwsh tools/make_portable_zip.ps1 -AppDir dist/fileboundary-windows-x64 -Version $version -OutDir dist/release
+          # discoverability portable zip (ADR-0010): family naming, single
+          # top-level directory, README + launcher injected, deterministic
+          # timestamps; also writes SHA256SUMS.txt + per-file sidecars for
+          # every asset already in dist/release (MSI, tarball, full package,
+          # manifest)
+          pwsh tools/make_portable_zip.ps1 -AppDir $appDir -Version $version -OutDir dist/release `
+            -ExtraDir tools/portable
           if ($LASTEXITCODE -ne 0) { throw "portable packaging failed" }
           Get-ChildItem dist/release | Format-Table Name, Length
 
@@ -103,8 +131,9 @@ jobs:
           FILEBOUNDARY_BUILD_COMMIT: ${{ env.SHORT_SHA }}
         run: |
           pwsh tools/release_smoke.ps1 -Version $env:VERSION -SourceDir . `
-            -PortableZip "dist/release/FileBoundary-v$($env:VERSION)-windows-x86_64.zip" `
-            -FullPackage "dist/release/FileBoundary-$($env:VERSION)-windows-x64.zip" `
+            -PortableZip "dist/release/fileboundary-$($env:VERSION)-windows-x64.zip" `
+            -MsiPath "dist/release/fileboundary-$($env:VERSION)-windows-x64.msi" `
+            -FullPackage "dist/release/fileboundary-$($env:VERSION)-windows-x64-update.zip" `
             -Manifest "dist/release/manifest.json"
           if ($LASTEXITCODE -ne 0) { throw "release smoke failed" }
 
@@ -116,11 +145,12 @@ jobs:
           $notes = @'
           # FileBoundary v__VERSION__
 
-          Windows-native file encryption diagnostics and adversarial recovery toolkit. Local-first; every network access is an explicit operator-initiated update command (ADR-0008).
+          Windows-native file encryption diagnostics and adversarial recovery toolkit. Local-first; every network access is an explicit operator-initiated update command (ADR-0008, revised by ADR-0010 for the MSI install face).
 
           ## What shipped
 
-          - Portable Windows x86_64 application (`FileBoundary-v__VERSION__-windows-x86_64.zip`): self-contained WinUI 3 host - no Racket or runtime prerequisite; unpack anywhere and run `RivetHost.exe`.
+          - **Windows installer** (`fileboundary-__VERSION__-windows-x64.msi`): per-machine install with Start-menu and desktop shortcuts - the recommended way to install.
+          - Portable Windows x86_64 application (`fileboundary-__VERSION__-windows-x64.zip`): self-contained WinUI 3 host - no Racket or runtime prerequisite; unpack anywhere, read the README.txt inside, run `RivetHost.exe` (or `FileBoundary.cmd`).
           - Update channel: `manifest.json` + full package zip for the explicit `update check` / `update now` / `update apply` commands into `%LOCALAPPDATA%\FileBoundary`.
           - Source distribution (`FileBoundary-v__VERSION__-source.tar.gz`): headless CLI (`racket src/cli.rkt`) requiring Racket CS 9.3 - the normative, agent-facing interface.
           - `SHA256SUMS.txt` and per-file `.sha256` for every artifact.
@@ -132,7 +162,7 @@ jobs:
           ## Verified
 
           - Full test suite green on Windows x64 ([run](__RUN_URL__)).
-          - Packaging smoke passed on the artifacts of this run: clean-directory extraction + checksums, GUI boot probe, CLI version/doctor envelopes, update-apply into a clean install root.
+          - Packaging smoke passed on the artifacts of this run: portable layout (single top-level directory, README, launcher), GUI boot probe, MSI silent install with Start-menu shortcut + clean uninstall, CLI version/doctor envelopes, update-apply into a clean install root.
 
           ## Known limitations
 
@@ -141,9 +171,10 @@ jobs:
           - Scan and diagnostics are read-only; recognized wrappers are not proof of encryption state; export comparison is not decryption.
           - Windows-only package in this channel (engine is Racket; other platform legs are not shipped yet).
 
-          ## Install (portable)
+          ## Install
 
-          Unzip `FileBoundary-v__VERSION__-windows-x86_64.zip` to a local folder and run `RivetHost.exe`. For the CLI, use the source distribution with Racket CS 9.3 and see README.md.
+          - **Installer (recommended)**: run `fileboundary-__VERSION__-windows-x64.msi` (per-machine; Windows will ask for elevation). FileBoundary appears in the Start menu.
+          - **Portable**: unzip `fileboundary-__VERSION__-windows-x64.zip` to a local folder and run `RivetHost.exe` from inside; the README.txt in the same folder explains the panels. For the CLI, use the source distribution with Racket CS 9.3 and see README.md.
 
           ## Update
 

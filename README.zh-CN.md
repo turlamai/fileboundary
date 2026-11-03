@@ -10,15 +10,16 @@
 
 - **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头重建 + xref 抽查）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
 - **已实现、本机已验证**：完整测试套件（194 项 + JSON Schema 契约校验）在 Windows 全绿，含三个 pin 定真实样本的端到端解密（[ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)）。CI 运行暂被账号账单阻塞——恢复前合并门禁由审查执行。
-- **发布列车**（[#9](https://github.com/turlamai/fileboundary/issues/9)、[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）：打 tag 触发 [release 工作流](.github/workflows/release.yml)，构建便携包、自更新全量包 + `manifest.json`、源码包、`SHA256SUMS.txt` 与逐文件校验和，对产物做冒烟（净目录解压、GUI 启动探针、CLI 信封、净安装根 update-apply），并以英文说明发布私有 Release。按 ADR-0008 **设计上不做 MSI/MSIX 安装器**——安装即解压便携 zip，或经 `update apply` 装入 `%LOCALAPPDATA%\FileBoundary`。
+- **发布列车**（[#9](https://github.com/turlamai/fileboundary/issues/9)、[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）：打 tag 触发 [release 工作流](.github/workflows/release.yml)，构建便携包、自更新全量包 + `manifest.json`、源码包、`SHA256SUMS.txt` 与逐文件校验和，对产物做冒烟（净目录解压、GUI 启动探针、CLI 信封、净安装根 update-apply），并以英文说明发布私有 Release。按 ADR-0010（修订 ADR-0008），**MSI 为主要安装面**；便携 zip 与显式自更新命令继续保留。
 - GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。
 
 既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turlamai/fileboundary/issues/1)）。
 
 ### Windows 安装
 
-- **便携 GUI（零依赖）**——从 [Releases](https://github.com/turlamai/fileboundary/releases) 下载 `FileBoundary-v<version>-windows-x86_64.zip`，解压到任意目录后运行 `RivetHost.exe`。
-- **更新通道**——已有安装用 `update now` 升级（或离线 `update apply --package <zip> --manifest <manifest.json>`）；安装位于 `%LOCALAPPDATA%\FileBoundary\releases\<version>\`。按 [ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md) 设计上**不做** MSI/MSIX。
+- **安装器（推荐）**——运行 [Releases](https://github.com/turlamai/fileboundary/releases) 中的 `fileboundary-<version>-windows-x64.msi`：全机安装，自动创建开始菜单与桌面快捷方式（[ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md)）。
+- **便携 GUI（零依赖）**——下载 `fileboundary-<version>-windows-x64.zip` 解压到任意目录，运行 `RivetHost.exe`（或 `FileBoundary.cmd`）；包内 `README.txt` 说明各面板用途。
+- **更新通道**——已有安装用 `update now` 升级（或离线 `update apply --package <zip> --manifest <manifest.json>`）；安装位于 `%LOCALAPPDATA%\FileBoundary\releases\<version>\`。按 [ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md) MSI 为主要安装面，便携 zip 继续提供。
 - **无头 CLI**——需要 Racket CS 9.3；使用源码发行档（`FileBoundary-v<version>-source.tar.gz`）。
 
 ### 无界面开发预览
@@ -140,7 +141,7 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 | Windows CI 与自动化测试 | [#6](https://github.com/turlamai/fileboundary/issues/6) | 完成（工作流已上线；runner 暂被账单阻塞） |
 | 版本化 JSON CLI 契约 | [#7](https://github.com/turlamai/fileboundary/issues/7) | 完成（schema + [CI 契约门禁](contracts/command-data-v1.schema.json)） |
 | 双语文档 | [#8](https://github.com/turlamai/fileboundary/issues/8) | 完成（README 镜像 + ADR 决策记录） |
-| Windows 便携版发布列车 | [#9](https://github.com/turlamai/fileboundary/issues/9) | release 工作流 + 冒烟已上线（tag 触发，[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)——设计上无安装器）；首次列车发版待打 tag |
+| Windows 发布列车（MSI + 便携包） | [#9](https://github.com/turlamai/fileboundary/issues/9)、[#42](https://github.com/turlamai/fileboundary/issues/42) | release 工作流 + 冒烟已上线（tag 触发）；MSI 安装面见 [ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md)，随下一版本生效 |
 
 ## 开发
 
