@@ -35,7 +35,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   // Navigation + file pickers + result copy.
   void Nav_SelectionChanged(
       winrt::Windows::Foundation::IInspectable const& sender,
-      Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const& args);
+      Microsoft::UI::Xaml::Controls::NavigationViewSelectionChangedEventArgs const& args);
   void PathBox_KeyDown(winrt::Windows::Foundation::IInspectable const& sender,
                        Microsoft::UI::Xaml::Input::KeyRoutedEventArgs const& args);
   void BrowseScan_Click(winrt::Windows::Foundation::IInspectable const& sender,
