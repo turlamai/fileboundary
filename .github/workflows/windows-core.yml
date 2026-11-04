@@ -54,7 +54,7 @@ jobs:
           $doctor = racket src/cli.rkt doctor | ConvertFrom-Json
           $doctorExit = $LASTEXITCODE
           if ($doctorExit -notin @(0, 1)) { throw "doctor command failed unexpectedly" }
-          if ($doctor.data.scope -ne "read-only-filter-enumeration") { throw "unexpected doctor scope" }
+          if ($doctor.data.scope -ne "read-only-diagnostics") { throw "unexpected doctor scope" }
           Write-Output "version, doctor, and usage JSON smoke passed"
           # Earlier expected nonzero child exit is not the job exit status.
           exit 0
