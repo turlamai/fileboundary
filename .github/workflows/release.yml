@@ -167,7 +167,7 @@ jobs:
           ## Known limitations
 
           - Interactive GUI smoke on a protected production machine remains a human gate (see docs/windows-qa.md) - do not delete encrypted originals based on any FileBoundary result.
-          - The policy pad is operator key material and is never shipped; decryption and pad recovery require it (`FILEBOUNDARY_PAD`).
+          - The policy pad is operator key material and is never shipped; decryption needs it chosen in the UI (or `--pad` on the CLI), pad recovery produces it.
           - Scan and diagnostics are read-only; recognized wrappers are not proof of encryption state; export comparison is not decryption.
           - Windows-only package in this channel (engine is Racket; other platform legs are not shipped yet).
 

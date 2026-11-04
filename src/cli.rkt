@@ -20,17 +20,6 @@
 (define default-manifest-url
   "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
 
-(define-runtime-path repo-root "..")
-;; Dev-tree fallback pad. The engine's portable pad resolution runs first
-;; ($FILEBOUNDARY_PAD, then pad_full.json beside the invoked location);
-;; the repository copy is a development convenience only.
-(define repo-default-pad
-  (build-path repo-root "research" "t0" "pad_full.json"))
-(define (resolve-pad-path cli-flag)
-  (or cli-flag
-      (default-pad-path)
-      (and (file-exists? repo-default-pad) repo-default-pad)
-      repo-default-pad))
 
 (define (coded code message)
   (hash 'code code 'message message))
@@ -38,7 +27,7 @@
 (define (bad-usage)
   (values 2 "error" (hash) '()
           (list (coded "invalidArguments"
-                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE [--pad PATH] | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update now [--manifest URL|PATH] [--root DIR] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
+                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE --pad PATH | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update now [--manifest URL|PATH] [--root DIR] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
 
 ;; decrypt: OOXML first (its CD is findable), fall back to the PDF path
 (define (run-decrypt in-path out-path pad-path)
@@ -261,8 +250,7 @@
      (let-values ([(_ flags) (split-flags rest '("--in" "--out" "--pad"))])
        (define in-path (hash-ref flags "--in" (lambda () #f)))
        (define out-path (hash-ref flags "--out" (lambda () #f)))
-       (define pad-path (resolve-pad-path
-                         (hash-ref flags "--pad" (lambda () #f))))
+       (define pad-path (hash-ref flags "--pad" (lambda () #f)))
        (if (and in-path out-path)
            (let ([report (decrypt-file in-path out-path pad-path)])
              (values 0 "ok"

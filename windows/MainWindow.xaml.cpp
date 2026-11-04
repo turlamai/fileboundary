@@ -481,8 +481,8 @@ void MainWindow::RunDecryptAsync() {
   auto const input = winrt::to_string(DecryptInputBox().Text());
   auto const output = winrt::to_string(DecryptOutputBox().Text());
   auto const pad = winrt::to_string(DecryptPadBox().Text());
-  if (input.empty() || output.empty()) {
-    SetErrorUi("Enter both the encrypted input path and the output path");
+  if (input.empty() || output.empty() || pad.empty()) {
+    SetErrorUi("选择加密文件、输出位置和密钥文件 / Choose the encrypted file, the output location and the key file");
     return;
   }
   SetBusyUi(true);

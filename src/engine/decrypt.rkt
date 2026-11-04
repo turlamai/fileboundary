@@ -35,8 +35,7 @@
          decrypt-pdf
          twin-vote
          write-twin-pad
-         decrypt-file
-         default-pad-path)
+         decrypt-file)
 
 ;; ---------- small helpers ----------
 
@@ -579,13 +578,13 @@
 ;; Decrypts an E-SafeNet-wrapped file to out-path: OOXML first (its CD is
 ;; findable), falling back to the PDF path. The returned report carries
 ;; per-entry CRC verdicts and counters only — never file contents. The
-;; pad path comes from the caller (default-pad-path or --pad).
+;; pad path is always explicit: --pad on the CLI, the key file
 (define (decrypt-file in-path out-path pad-path)
   (unless pad-path
     (raise-arguments-error 'decrypt-file
                            "no policy pad available"
                            "resolution"
-                           "set FILEBOUNDARY_PAD or pass --pad"))
+                           "CLI: pass --pad; GUI: choose the key file"))
   (define pad (load-pad pad-path))
   (define ct (file->bytes in-path))
   (parse-wrapper ct)
@@ -612,24 +611,3 @@
   (for/hash ([k (in-list (hash-keys result))] #:unless (equal? k 'bytes))
     (values k (hash-ref result k))))
 
-;; ---------- default pad resolution (portable) ----------
-;;
-;; The policy pad is operator key material that lives OUTSIDE the
-;; repository and any packaged distribution, so it must never be a
-;; compile-time path reference: `raco rivet build` distribution assembly
-;; would try to copy the referenced file into the package and fail when
-;; it is absent (and it must be absent — key material is not shipped).
-;; Resolved at call time instead: $FILEBOUNDARY_PAD first, then
-;; pad_full.json beside the invoked location; #f when neither exists.
-;; The CLI adds its dev-tree fallback on top; the GUI host relies on the
-;; operator environment.
-
-(define (default-pad-path)
-  (or (let ([env (getenv "FILEBOUNDARY_PAD")])
-        (and env (file-exists? env) (simple-form-path env)))
-      (let* ([exe (find-system-path 'run-file)]
-             [dir (path-only (simple-form-path exe))])
-        (define candidate
-          (if dir (build-path dir "pad_full.json") #f))
-        (and candidate (file-exists? candidate) candidate))
-      #f))
