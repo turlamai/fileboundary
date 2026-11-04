@@ -196,7 +196,7 @@
           "const": "measured"
         },
         "scope": {
-          "const": "read-only-filter-enumeration"
+          "const": "read-only-diagnostics"
         }
       }
     },
