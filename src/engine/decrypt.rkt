@@ -382,10 +382,22 @@
     k))
 
 (define (decrypt-pdf ct pad)
-  ;; decrypt + verify + semantic head rebuild for the measured layout
-  ;; family (a page object straddles the 512-byte overwrite boundary)
+  ;; dispatch: a classic xref table means the measured-family head
+  ;; rebuild; anything else (xref streams, PDF 1.5+) goes to object
+  ;; salvage into a fresh document skeleton. A correct pad leaves
+  ;; readable PDF objects in the body — the wrapper header itself is
+  ;; unencrypted, so without this check a wrong pad masqueraded as a
+  ;; structural problem.
   (define s (xor-pad ct pad))
   (define body-start 512)
+  (unless (>= (count-subbytes s body-start #" obj") 2)
+    (error 'decrypt-pdf
+           "the pad does not match this file: no recognizable PDF structures after decryption"))
+  (if (find-xref-table s body-start)
+      (decrypt-pdf-classic s body-start)
+      (decrypt-pdf-salvage s body-start)))
+
+(define (decrypt-pdf-classic s body-start)
   (define hdr (find-xref-table s body-start))
   (unless hdr (error 'decrypt-pdf "no classic xref table header"))
   (define count (car hdr))
@@ -478,9 +490,9 @@
                                (bytes-length straddler-tail)))
                   straddler-tail
                   (subbytes s2 obj-end-abs)))
-  (unless (= (bytes-length original) (bytes-length ct))
+  (unless (= (bytes-length original) (bytes-length s))
     (error 'decrypt-pdf "assembled length mismatch: ~a vs ~a"
-           (bytes-length original) (bytes-length ct)))
+           (bytes-length original) (bytes-length s)))
   ;; xref spot-check in the original coordinate system: walk every
   ;; classic table (arithmetically — no control bytes in patterns) and
   ;; verify each 'n' record's offset lands on an object header
@@ -510,6 +522,163 @@
         'headRebuilt #t
         'coverObject straddler
         'pages (length kids)))
+
+;; ---------- non-classic xref salvage (xref-stream PDFs) ----------
+
+;; occurrences of a byte pattern in s from `from` onward
+(define (count-subbytes s from needle)
+  (define n (bytes-length needle))
+  (let loop ((i from) (c 0))
+    (if (> (+ i n) (bytes-length s))
+        c
+        (loop (+ i 1)
+              (+ c (if (bytes=? (subbytes s i (+ i n)) needle) 1 0))))))
+
+;; collect intact top-level "N 0 obj ... endobj" objects from the
+;; decrypted body: deduplicated by object number, non-overlapping
+;; spans, stale xref streams and compressed object streams counted
+;; separately (their contents cannot be salvaged here)
+(define (salvage-objects s body-start)
+  (define matches
+    (sort
+     (for/list ((m (in-list (regexp-match-positions* #px#"([0-9]{1,6}) 0 obj"
+                                                     s body-start))))
+       m)
+     < #:key car))
+  (define seen (make-hash))
+  (define spans null)
+  (define objstms 0)
+  (for ((m (in-list matches)))
+    (define start (car m))
+    ;; a real object header is preceded by whitespace or a document
+    ;; boundary; inside content streams the text is usually embedded
+    ;; differently, but this stays a heuristic
+    (define prev-ok (or (= start body-start)
+                        (let ((p (bytes-ref s (sub1 start))))
+                          (or (= p 10) (= p 13) (= p 32)))))
+    (define num
+      (string->number
+       (bytes->string/utf-8
+        (subbytes s (car m) (+ (car m) (- (cdr m) (car m) 6))))))
+    (when (and prev-ok num (not (hash-has-key? seen num))
+               (for/and ((sp (in-list spans)))
+                 (or (<= (+ (car sp) (cdr sp)) start)
+                     (>= start (+ (car sp) (cdr sp))))))
+      (define obj-end (bytes-find s #"endobj" (cdr m)))
+      (when obj-end
+        (define end-abs (min (+ obj-end 6) (bytes-length s)))
+        (set! spans (cons (cons start end-abs) spans))
+        (define obj (subbytes s start end-abs))
+        (cond
+          ((regexp-match? #px#"/Type\\s*/XRef\\b" obj) (void))
+          ((regexp-match? #px#"/Type\\s*/ObjStm\\b" obj)
+           (set! objstms (add1 objstms)))
+          (else (hash-set! seen num obj))))))
+  (values seen objstms))
+
+;; insert /MediaBox into a page object's top-level dict (before the
+;; last >> of the dict segment) when it relies on inheritance
+(define (inject-mediabox obj box-bytes)
+  (if (regexp-match? #px#"/MediaBox" obj)
+      obj
+      (let ((stream-at (bytes-find obj #"stream"))
+            (hit (for/fold ((hit #f))
+                           ((i (in-range 0 (- (bytes-length obj) 1))))
+                   (if (and (= (bytes-ref obj i) 62)
+                            (= (bytes-ref obj (add1 i)) 62))
+                       i
+                       hit))))
+        (if hit
+            (bytes-append (subbytes obj 0 hit)
+                          #" /MediaBox[" box-bytes #"]"
+                          (subbytes obj hit))
+            obj))))
+
+;; rebuild a fresh document skeleton (new catalog + flat pages tree +
+;; new classic xref + trailer) around the salvaged objects. Page
+;; objects keep their original numbers; the catalog and pages tree get
+;; numbers above every salvaged one. /MediaBox is inherited from a
+;; salvaged /Type/Pages node when the leaves rely on it (A4 otherwise).
+(define (decrypt-pdf-salvage s body-start)
+  (define-values (objs objstms) (salvage-objects s body-start))
+  (define nums (sort (hash-keys objs) <))
+  (unless (pair? nums)
+    (error 'decrypt-pdf "no intact objects survive decryption"))
+  (define pages-src
+    (for/list ((n (in-list nums))
+               #:when (regexp-match? re-page (hash-ref objs n))
+               #:unless (regexp-match? re-pages (hash-ref objs n)))
+      n))
+  (unless (pair? pages-src)
+    (error 'decrypt-pdf
+           "objects survive but no direct page objects found (~a compressed object stream(s) not supported)"
+           objstms))
+  (define maxnum (apply max nums))
+  (define cat-num (add1 maxnum))
+  (define pages-num (+ maxnum 2))
+  (define box
+    (or (for/first ((n (in-list nums))
+                    #:when (regexp-match? re-pages (hash-ref objs n))
+                    #:when (regexp-match? #px#"/MediaBox\\s*\\[[^\\]]*\\]"
+                                          (hash-ref objs n)))
+          (cadr (regexp-match #px#"/MediaBox\\s*(\\[[^\\]]*\\])"
+                              (hash-ref objs n))))
+        #"0 0 595 842"))
+  (for ((n (in-list pages-src)))
+    (hash-set! objs n (inject-mediabox (hash-ref objs n) box)))
+  (define kids
+    (string-join (for/list ((n (in-list pages-src))) (format "~a 0 R" n)) " "))
+  (define parts null)
+  (define offsets (make-hash))
+  (define pos 0)
+  (define (emit num b)
+    (when num (hash-set! offsets num pos))
+    (set! parts (cons b parts))
+    (set! pos (+ pos (bytes-length b))))
+  (emit #f #"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+  (emit cat-num
+        (string->bytes/utf-8
+         (format "~a 0 obj\n<< /Type /Catalog /Pages ~a 0 R >>\nendobj\n"
+                 cat-num pages-num)))
+  (emit pages-num
+        (string->bytes/utf-8
+         (format "~a 0 obj\n<< /Type /Pages /Kids[~a] /Count ~a >>\nendobj\n"
+                 pages-num kids (length pages-src))))
+  (for ((n (in-list nums)))
+    (emit n (hash-ref objs n)))
+  ;; classic xref (ascending object numbers, free entry 0 first)
+  (define all-num-records
+    (sort (hash->list offsets) < #:key car))
+  (define xref-at pos)
+  (emit #f
+        (string->bytes/utf-8
+         (string-append
+          "xref\r\n0 " (number->string (add1 (length all-num-records))) "\r\n"
+          "0000000000 65535 f\r\n"
+          (string-join
+           (for/list ((p (in-list all-num-records)))
+             (string-append (zero-pad10 (car p)) " 00000 n\r\n"))
+           "")
+          "trailer\n<< /Size " (number->string (add1 (length all-num-records)))
+          " /Root " (number->string cat-num) " 0 R >>\nstartxref\n"
+          (number->string xref-at) "\n%%EOF\n")))
+  (define assembled (apply bytes-append (reverse parts)))
+  ;; spot-check: every record's offset lands on its own object header
+  (define checked (length all-num-records))
+  (define bad
+    (for/sum ((p (in-list all-num-records)))
+      (define o (cdr p))
+      (define expect (string->bytes/utf-8
+                      (format "~a 0 obj" (car p))))
+      (if (bytes=? (subbytes assembled o (+ o (bytes-length expect)))
+                   expect)
+          0 1)))
+  (hash 'bytes assembled
+        'xrefChecked checked
+        'xrefBad bad
+        'headRebuilt #t
+        'coverObject #f
+        'pages (length pages-src)))
 
 ;; ---------- pad from a known-plaintext twin ----------
 
