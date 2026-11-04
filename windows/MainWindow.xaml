@@ -294,15 +294,29 @@
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1">
-                        <StackPanel Spacing="8">
-                            <TextBlock x:Name="ResultTitle" FontWeight="SemiBold" />
-                            <TextBlock x:Name="ResultText" TextWrapping="Wrap"
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid Grid.Row="0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" x:Name="ResultTitle" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="1" x:Name="CopyResultButton" Content="复制"
+                                        Click="CopyResult_Click"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="8,2" FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                            <TextBlock Grid.Row="1" x:Name="ResultText" TextWrapping="Wrap"
                                        IsTextSelectionEnabled="True"
                                        FontSize="13"
                                        AutomationProperties.AutomationId="scan-result" />
-                            <Button x:Name="CopyResultButton" Content="复制结果 Copy result"
-                                    Click="CopyResult_Click" />
-                        </StackPanel>
+                        </Grid>
                     </Border>
                 </Grid>
             </NavigationView.Content>
