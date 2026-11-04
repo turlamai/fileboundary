@@ -189,7 +189,7 @@
                                                FontWeight="SemiBold" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Text="把一个带加密壳的文件解密成普通文件，写到指定的输出位置。需要本机已配置密钥文件（环境变量 FILEBOUNDARY_PAD）。原始文件不会被改动；没有密钥时会直接失败，不会生成残缺文件。" />
+                                               Text="把一个带加密壳的文件解密成普通文件，写到指定的输出位置。需要选择之前恢复出的密钥文件（pad_full.json）。原始文件不会被改动；没有密钥时会直接失败，不会生成残缺文件。" />
                                     <TextBlock Text="加密的输入文件" Margin="0,10,0,0" />
                                     <Grid ColumnSpacing="8">
                                         <Grid.ColumnDefinitions>
@@ -200,6 +200,17 @@
                                                  AutomationProperties.AutomationId="decrypt-input-path" />
                                         <Button Grid.Column="1" x:Name="BrowseDecryptInputButton"
                                                 Content="浏览…" Click="BrowseDecryptInput_Click" />
+                                    </Grid>
+                                    <TextBlock Text="密钥文件（之前恢复出的 pad_full.json，必选）" Margin="0,6,0,0" />
+                                    <Grid ColumnSpacing="8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox Grid.Column="0" x:Name="DecryptPadBox"
+                                                 AutomationProperties.AutomationId="decrypt-pad-path" />
+                                        <Button Grid.Column="1" x:Name="BrowseDecryptPadButton"
+                                                Content="浏览…" Click="BrowseDecryptPad_Click" />
                                     </Grid>
                                     <TextBlock Text="解密输出到" Margin="0,6,0,0" />
                                     <Grid ColumnSpacing="8">

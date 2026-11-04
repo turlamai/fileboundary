@@ -26,10 +26,11 @@
 ;; `racket src/cli.rkt decrypt` (OOXML first, PDF fallback). The response
 ;; carries per-entry CRC verdicts only — names, booleans and counters,
 ;; never file contents (RPC hygiene). The policy pad is operator key
-;; material resolved from the environment ($FILEBOUNDARY_PAD), never
+;; material: the caller supplies a pad file path (GUI key picker or CLI
+;; --pad) — there is no implicit resolution and key material is never
 ;; packaged with the app; a missing pad surfaces as a bounded RPC error.
-(define-rpc (decrypt-summary [input : String] [output : String] : String)
-  (define report (dec:decrypt-file input output (dec:default-pad-path)))
+(define-rpc (decrypt-summary [input : String] [output : String] [pad : String] : String)
+  (define report (dec:decrypt-file input output pad))
   (define out-name
     (path->string (file-name-from-path (simple-form-path output))))
   (if (equal? (hash-ref report 'kind) "pdf")

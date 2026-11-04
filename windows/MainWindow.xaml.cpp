@@ -252,6 +252,12 @@ void MainWindow::BrowseDecryptOutput_Click(
       {{L"文档", {L".docx", L".xlsx", L".pptx"}}, {L"PDF", {L".pdf"}}});
 }
 
+void MainWindow::BrowseDecryptPad_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  PickOpenInto(DecryptPadBox(), WindowHandle(), DispatcherQueue());
+}
+
 void MainWindow::BrowseTwinPlain_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
@@ -474,8 +480,9 @@ void MainWindow::RunDecryptAsync() {
   }
   auto const input = winrt::to_string(DecryptInputBox().Text());
   auto const output = winrt::to_string(DecryptOutputBox().Text());
-  if (input.empty() || output.empty()) {
-    SetErrorUi("Enter both the encrypted input path and the output path");
+  auto const pad = winrt::to_string(DecryptPadBox().Text());
+  if (input.empty() || output.empty() || pad.empty()) {
+    SetErrorUi("选择加密文件、输出位置和密钥文件 / Choose the encrypted file, the output location and the key file");
     return;
   }
   SetBusyUi(true);
@@ -483,7 +490,7 @@ void MainWindow::RunDecryptAsync() {
   auto const weak = get_weak();
   try {
     rivet_app::API api(*backend);
-    (void)api.decrypt_summary_async(input, output,
+    (void)api.decrypt_summary_async(input, output, pad,
         [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
           try {
             auto message = result.get();

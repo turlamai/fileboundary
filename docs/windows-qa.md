@@ -23,9 +23,7 @@
 
 Only where recovery of the specific content is authorized **and** the operator owns the policy pad:
 
-1. Set the pad for the session before launching the app (the package never contains pad material):
-   ```powershell
-   $env:FILEBOUNDARY_PAD = "D:\keys\pad_full.json"
+1. Have the recovered pad file ready (the package never contains pad material):
    ```
 2. Put the wrapped input path in the **Decrypt** panel's first box and the output destination in the second. Select **Decrypt**.
 3. Acceptance:
@@ -40,7 +38,7 @@ Only where recovering the policy pad is authorized:
 
 1. Produce an aligned twin pair per [FIELD_PROTOCOL](../research/t0/FIELD_PROTOCOL.md): save one file through a whitelisted app (plaintext view), copy the same byte range through a non-whitelisted tool (wrapped view). Documents that merely share content are **not** twins — a misaligned pair must return `complete: false` with a high `missingCount`, never a guessed pad.
 2. Fill the twin plaintext, twin ciphertext and pad output paths; select **Pad Twin**.
-3. Acceptance: `covered: 512, complete: true`; the pad file exists at the operator-supplied path only; no pad material appears in the result panel. A recovered pad may then feed the Decrypt panel (set it via `$FILEBOUNDARY_PAD`).
+3. Acceptance: `covered: 512, complete: true`; the pad file exists at the operator-supplied path only; no pad material appears in the result panel. A recovered pad can then be selected directly in the Decrypt panel's key-file field (or passed as `--pad` on the CLI).
 
 ## Controlled twin sample
 

@@ -7,6 +7,7 @@
         (release-channel . stable)
         (url-schemes . ())
         (file-associations . ())
+        (windows-icon . "assets/app.ico")
         (resources . ())
         (device-rpcs . ())
         (macos-min-version . "14.0")
