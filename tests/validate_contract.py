@@ -75,7 +75,7 @@ with tempfile.TemporaryDirectory(prefix="fb-contract-") as workdir:
     assert scan["data"]["count"] == 2
     assert verify_partial["data"]["verdict"] == "unverified"
     assert verify_failed["data"]["verdict"] == "failed"
-    assert doctor["data"]["scope"] == "read-only-filter-enumeration"
+    assert doctor["data"]["scope"] == "read-only-diagnostics"
     assert usage["errors"][0]["code"] == "invalidArguments"
     assert missing["errors"][0]["code"] == "runtimeError"
     assert bad_hash["errors"][0]["code"] == "invalidArguments"
