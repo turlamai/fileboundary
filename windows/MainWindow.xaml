@@ -15,7 +15,7 @@
 
         <InfoBar Grid.Row="0" x:Name="StatusBar" IsOpen="True" IsClosable="False"
                  Severity="Informational"
-                 Message="正在启动内置引擎... / Starting the embedded engine..." />
+                 Message="正在启动内置引擎..." />
 
         <NavigationView Grid.Row="1" x:Name="Nav"
                         IsBackButtonVisible="Collapsed"

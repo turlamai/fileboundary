@@ -336,9 +336,12 @@ void MainWindow::SetBusyUi(bool busy) {
   VerifyButton().IsEnabled(!busy && backend_ && backend_->running());
   DecryptButton().IsEnabled(!busy && backend_ && backend_->running());
   TwinButton().IsEnabled(!busy && backend_ && backend_->running());
+  // the banner only speaks while something is happening; an idle app
+  // stays quiet (owner feedback: the permanent ready banner is noise)
+  StatusBar().IsOpen(busy);
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
-    StatusBar().Message(L"正在处理，请稍候... / Working...");
+    StatusBar().Message(L"正在处理，请稍候...");
   }
 }
 
@@ -561,8 +564,9 @@ void MainWindow::ShowTextResult(
   ResultTitle().Text(title);
   ResultText().Text(body);
   last_result_text_ = winrt::hstring(body);
-  StatusBar().Severity(severity);
-  StatusBar().Message(status_message);
+  (void)severity;  // the result card carries the verdict
+  (void)status_message;
+  StatusBar().IsOpen(false);
 }
 
 // The decrypt RPC returns JSON (names, booleans, counters — never file
@@ -613,8 +617,7 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
     ResultTitle().Text(title);
     ResultText().Text(body);
     last_result_text_ = winrt::to_hstring(json);
-    StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-    StatusBar().Message(L"解密完成：输出已写入你选择的位置。");
+    StatusBar().IsOpen(false);  // the result card carries the verdict
   } catch (...) {
     // Malformed JSON from the engine should never crash the UI; fall back
     // to showing the raw text.
@@ -652,11 +655,13 @@ void MainWindow::ShowTwinResult(std::string const& json) {
     ResultTitle().Text(title);
     ResultText().Text(body);
     last_result_text_ = winrt::to_hstring(json);
-    StatusBar().Severity(complete
-                             ? Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success
-                             : Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
-    StatusBar().Message(complete ? L"密钥恢复成功。"
-                                 : L"密钥未完整恢复，需要重新提供文件对。");
+    // incomplete recovery keeps a warning banner up; success is carried
+    // by the result card alone
+    StatusBar().IsOpen(!complete);
+    if (!complete) {
+      StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
+      StatusBar().Message(L"密钥未完整恢复，需要重新提供文件对。");
+    }
   } catch (...) {
     ShowTextResult(L"恢复结果", winrt::to_hstring(json),
                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
@@ -673,14 +678,12 @@ void MainWindow::ShowFailed(std::string const& what) {
   body += L"\n常见原因：本机未配置密钥文件（FILEBOUNDARY_PAD），或输入的不是加密文件。";
   ResultText().Text(body);
   last_result_text_ = winrt::to_hstring(what);
-  StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Error);
-  StatusBar().Message(L"操作未完成：没有改动任何文件。");
+  StatusBar().IsOpen(false);  // the result card carries the failure
 }
 
 void MainWindow::SetReadyUi() {
   SetBusyUi(false);
-  StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-  StatusBar().Message(L"就绪。从左侧选择一个功能开始。 / Ready.");
+  StatusBar().IsOpen(false);  // an idle app stays quiet
 }
 
 void MainWindow::SetErrorUi(std::string const& message) {
