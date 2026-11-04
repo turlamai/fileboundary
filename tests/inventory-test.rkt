@@ -5,28 +5,67 @@
          racket/path
          "../src/engine/inventory.rkt")
 
-(define-values (signature verdict evidence) (classify-header #"%PDF-1.7"))
+;; classification per the semantics table (docs/architecture.md): label +
+;; evidence class + confidence; a header match alone never yields
+;; plaintext — end-to-end structure must check out
+(define-values (signature verdict evidence confidence)
+  (classify-header #"%PDF-1.7"))
 (check-equal? signature "pdf-header")
-(check-equal? verdict "unknown") ; magic bytes are not evidence of plaintext
+(check-equal? verdict "likely-encrypted") ; structure does not validate end-to-end
 (check-equal? evidence "measured")
+(check-equal? confidence "medium")
 
-(define-values (locked-signature locked-verdict _)
+;; end-to-end PDF: header + %%EOF trailer = plaintext (measured)
+(define-values (pdf-ok-signature pdf-ok-verdict _pdf-ok-evidence pdf-ok-confidence)
+  (classify-header #"%PDF-1.7" #:tail (string->bytes/utf-8 "x%%EOF")))
+(check-equal? pdf-ok-signature "pdf")
+(check-equal? pdf-ok-verdict "plaintext")
+(check-equal? pdf-ok-confidence "high")
+
+(define-values (locked-signature locked-verdict locked-evidence locked-confidence)
   (classify-header
    (bytes-append (bytes 98 20 35 101 155 0 101 1)
                  #"E-SafeNet LOCK synthetic test only")))
 (check-equal? locked-signature "esafenet-wrapper")
 (check-equal? locked-verdict "encrypted-recognized")
+(check-equal? locked-evidence "heuristic")
+(check-equal? locked-confidence "high")
 ;; The field following the stable 4-byte wrapper magic varies by file type.
-(define-values (docx-signature docx-verdict _docx-evidence)
+(define-values (docx-signature docx-verdict _docx-evidence _docx-confidence)
   (classify-header
    (bytes-append (bytes 98 20 35 101 188 1 68 0)
                  #"E-SafeNet LOCK synthetic DOCX wrapper")))
 (check-equal? docx-signature "esafenet-wrapper")
 (check-equal? docx-verdict "encrypted-recognized")
 ;; The prefix alone is not sufficient to claim an encrypted wrapper.
-(define-values (_bare-signature bare-verdict _bare-evidence)
+(define-values (_bare-signature bare-verdict _bare-evidence bare-confidence)
   (classify-header (bytes 98 20 35 101 188 1 68 0)))
 (check-equal? bare-verdict "unknown")
+(check-equal? bare-confidence "low")
+
+;; 7z is compressed by design: high entropy proves nothing there
+(define-values (sz-signature sz-verdict sz-evidence sz-confidence)
+  (classify-header (bytes 55 122 188 175 39 28) #:entropy 7.9))
+(check-equal? sz-signature "7z-header")
+(check-equal? sz-verdict "unknown")
+(check-equal? sz-confidence "low")
+
+;; generic high-entropy payload with no known signature
+(define-values (he-signature he-verdict _he-evidence he-confidence2)
+  (classify-header #"ÿÿÿÿ" #:entropy 7.9))
+(check-equal? he-signature "high-entropy")
+(check-equal? he-verdict "likely-encrypted")
+(check-equal? he-confidence2 "medium")
+
+;; zip: header without an end-of-central-directory record = structurally
+;; inconsistent with the claimed format
+(define-values (zip-only-signature zip-only-verdict _zip-evidence _zip-c)
+  (classify-header (bytes 80 75 3 4)))
+(check-equal? zip-only-verdict "likely-encrypted")
+(define-values (zip-ok-signature zip-ok-verdict _zip-ok-evidence _zip-ok-c)
+  (classify-header (bytes 80 75 3 4) #:tail (bytes 80 75 5 6)))
+(check-equal? zip-ok-signature "zip-ooxml")
+(check-equal? zip-ok-verdict "plaintext")
 
 (define tmp (make-temporary-file "fileboundary-inventory-~a" 'directory))
 (dynamic-wind
@@ -40,7 +79,10 @@
           [observed (inspect-file original)])
      (check-equal? (hash-ref observed 'fileName) "test.pdf")
      (check-equal? (hash-ref observed 'sizeBytes) (bytes-length before))
-     (check-equal? (hash-ref observed 'classification) "unknown")
+     ;; a PDF header over an invalid body is likely-encrypted per the
+     ;; semantics table (structure does not validate end-to-end)
+     (check-equal? (hash-ref observed 'classification) "likely-encrypted")
+     (check-equal? (hash-ref observed 'confidence) "medium")
      (check-equal? (hash-ref observed 'sha256)
                    "8d5c2a3f60418620f9758335e196081510e61c173f4f450146b87e50c5932a20")
      (check-equal? before (file->bytes original))) ; never writes originals

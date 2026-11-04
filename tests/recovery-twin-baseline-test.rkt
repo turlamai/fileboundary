@@ -30,7 +30,7 @@
 (check-equal? (hash-ref plaintext 'sha256) (hash-ref plain-meta 'sha256))
 (check-equal? (hash-ref encrypted 'classification) "encrypted-recognized")
 (check-equal? (hash-ref encrypted 'signature) "esafenet-wrapper")
-(check-equal? (hash-ref plaintext 'signature) "zip-header")
+(check-equal? (hash-ref plaintext 'signature) "zip-ooxml")
 (check-not-equal? (hash-ref plaintext 'classification) "encrypted-recognized")
 
 ;; Ground-truth, *already plaintext* twin is a verification reference, not

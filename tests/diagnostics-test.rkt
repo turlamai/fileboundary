@@ -16,7 +16,7 @@
 ;; These checks run on Windows in CI, but must degrade explicitly elsewhere.
 (define report (doctor-report))
 (check-true (hash-has-key? report 'checks))
-(check-equal? (hash-ref report 'scope) "read-only-filter-enumeration")
+(check-equal? (hash-ref report 'scope) "read-only-diagnostics")
 (define checks (hash-ref report 'checks))
 (for ([name (in-list '(filters instances))])
   (define check (hash-ref checks name))

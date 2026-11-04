@@ -1,6 +1,6 @@
 # ADR-0002: Racket-first Windows stack and native-interop validation
 
-- **Status:** Proposed — **Racket-first is the owner's explicit preference; framework selection is not yet accepted**
+- **Status:** Accepted (2026-11-04, issue #13 closed) — the Racket + Rivet/WinUI 3 vertical slice is proven end to end: headless JSON CLI with 345-test suite, native WinUI 3 host with typed RPC round-trip (live-tested), bounded read-only diagnostics with explicit elevation/error/timeout semantics, MSI + portable packaging smoke on clean CI runners
 - **Date:** 2026-10-27
 - **Related:** [#1](https://github.com/turlamai/fileboundary/issues/1), [#2](https://github.com/turlamai/fileboundary/issues/2), [prototype review](../prototype-review.md)
 

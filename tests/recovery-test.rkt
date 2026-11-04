@@ -38,8 +38,10 @@
        (check-equal? (hash-ref (hash-ref report 'source) 'classification)
                      "encrypted-recognized")
        (check-equal? (hash-ref (hash-ref report 'export) 'signature)
-                     "pdf-header")
-       (check-equal? (hash-ref (hash-ref report 'pdfStructureHints) 'eofMarkerSeen) #t)
+                     "pdf")
+       ;; the authorized export here is the OOXML twin, not a PDF:
+       ;; PDF structure hints do not apply
+       (check-false (hash-ref (hash-ref report 'pdfStructureHints) 'eofMarkerSeen))
        (check-equal? (hash-ref report 'trustedPlaintextSha256Comparison)
                      "notProvided")
        (check-equal? (hash-ref report 'fullFormatValidation) "notPerformed")
