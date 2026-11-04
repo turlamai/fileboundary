@@ -14,6 +14,8 @@
         "signature",
         "classification",
         "evidence",
+        "confidence",
+        "entropyBits",
         "readView"
       ],
       "properties": {
@@ -33,7 +35,9 @@
         },
         "classification": {
           "enum": [
+            "plaintext",
             "encrypted-recognized",
+            "likely-encrypted",
             "unknown"
           ]
         },
@@ -42,6 +46,16 @@
             "measured",
             "heuristic"
           ]
+        },
+        "confidence": {
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "entropyBits": {
+          "type": "string"
         },
         "readView": {
           "const": "current-process"
