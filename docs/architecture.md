@@ -36,7 +36,7 @@ FileBoundary first observes and measures these components. Under the adversarial
 
 Dependency rule: dependencies point downward only. `contracts` depends on nothing. The GUI and CLI never import each other. Engine modules never import a front end. Violations of this rule are review blockers.
 
-## Diagnostics module — planned, [#3](https://github.com/turlamai/fileboundary/issues/3)
+## Diagnostics module — shipped (bounded subset), [#3](https://github.com/turlamai/fileboundary/issues/3)
 
 What it enumerates, and how it stays read-only:
 
@@ -48,7 +48,7 @@ What it enumerates, and how it stays read-only:
 
 Every check that requires elevation reports `requiresElevation` in the JSON report instead of failing silently or skipping quietly.
 
-## Inventory module — planned, [#4](https://github.com/turlamai/fileboundary/issues/4)
+## Inventory module — shipped, [#4](https://github.com/turlamai/fileboundary/issues/4)
 
 - **Resumable scan** — walk is persisted; an interrupted scan resumes without rehashing.
 - **Format sniffing** — magic bytes plus structural validation of the container/document format. Header recognition alone never proves plaintext (see below).

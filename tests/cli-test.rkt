@@ -38,7 +38,7 @@
 (check-not-false (member (hash-ref doctor 'status) '("ok" "partial")))
 (check-true (hash-has-key? (hash-ref doctor 'data) 'checks))
 (check-equal? (hash-ref (hash-ref doctor 'data) 'scope)
-              "read-only-filter-enumeration")
+              "read-only-diagnostics")
 
 (define tmp (make-temporary-file "fileboundary-cli-~a" 'directory))
 (dynamic-wind

@@ -87,6 +87,81 @@
        (loop (cdr xs) pos (hash-set flags (car xs) #t))]
       [else (loop (cdr xs) (cons (car xs) pos) flags)])))
 
+(define (inventory-command rest)
+  (let-values (((raw-dirs raw-exts rest*)
+                (let loop ((xs rest) (dirs null) (exts null) (acc null))
+                  (cond
+                    ((null? xs)
+                     (values (reverse dirs) (reverse exts) (reverse acc)))
+                    ((and (pair? (cdr xs)) (equal? (car xs) "--exclude-dir"))
+                     (loop (cddr xs) (cons (cadr xs) dirs) exts acc))
+                    ((and (pair? (cdr xs)) (equal? (car xs) "--exclude-ext"))
+                     (loop (cddr xs) dirs (cons (cadr xs) exts) acc))
+                    (else
+                     (loop (cdr xs) dirs exts (cons (car xs) acc)))))))
+    (define-values (scan-pos scan-flags)
+      (split-flags rest* (list "--max-files" "--manifest-out" "--resume")))
+    (define scan-path (and (pair? scan-pos) (car scan-pos)))
+    (define max-files
+      (let ((raw (hash-ref scan-flags "--max-files" (lambda () #f))))
+        (if raw (string->number raw) 1000)))
+    (define manifest-out (hash-ref scan-flags "--manifest-out" (lambda () #f)))
+    (define resume-src (hash-ref scan-flags "--resume" (lambda () #f)))
+    (define manifest-target (or manifest-out resume-src))
+    (define valid? (and scan-path
+                        max-files
+                        (exact-integer? max-files)
+                        (<= 1 max-files 100000)))
+    (cond
+      ((not valid?) (bad-usage))
+      (else
+       (with-handlers
+           ((exn:fail:unsafe-scan-path?
+             (lambda (_)
+               (values 3 "error" (hash) null
+                       (list (coded "unsafeScanPath"
+                                    "The artifact destination overlaps the scanned tree; write it outside the scanned root."))))))
+         (when (and manifest-target scan-path)
+           (reject-output-overlap! scan-path manifest-target))
+         (define prior
+           (and resume-src (manifest->prior-table (read-manifest resume-src))))
+         (define-values (entries skipped truncated? reused excluded-count)
+           (scan-tree/resume scan-path max-files prior
+                             #:exclude-dirs raw-dirs
+                             #:exclude-exts raw-exts))
+         (define warnings
+           (append
+            (if (> skipped 0)
+                (list (coded "skippedEntries" "Some entries were inaccessible or filesystem links."))
+                null)
+            (if truncated?
+                (list (coded "limitReached" "Scan stopped at the configured max-files limit."))
+                null)
+            (if (> excluded-count 0)
+                (list (coded "excludedEntries" "Some entries were skipped by the applied exclude filters."))
+                null)))
+         (define artifact
+           (and manifest-target
+                (write-manifest!
+                 manifest-target
+                 (manifest->jsexpr scan-path entries skipped truncated?
+                                   max-files reused excluded-count
+                                   raw-dirs raw-exts))))
+         (values (if (null? warnings) 0 1)
+                 (if (null? warnings) "ok" "partial")
+                 (hash 'files (map (lambda (e) (hash-ref e 'record)) entries)
+                       'count (length entries)
+                       'skippedCount skipped
+                       'excludedCount excluded-count
+                       'reusedCount reused
+                       'truncated truncated?
+                       'readView "current-process"
+                       'recoveryVerdict "unverified"
+                       'manifestPath (if artifact
+                                         (path->string (file-name-from-path artifact))
+                                         #f))
+                 warnings null))))))
+
 (define (dispatch args)
   (define command (if (null? args) "" (car args)))
   (define rest (if (null? args) '() (cdr args)))
@@ -144,6 +219,21 @@
            (values (if degraded? 1 0)
                    (if degraded? "partial" "ok")
                    report warnings '()))
+         (bad-usage))]
+    [(equal? command "inventory")
+     (inventory-command rest)]
+    [(equal? command "diagnostics-report")
+     (if (= (length rest) 1)
+         (let ()
+           (define report (doctor-report (getenv "FILEBOUNDARY_PROBE")))
+           (define path (car rest))
+           (write-report! path (report->jsexpr report))
+           (values 0 "ok"
+                   (hash 'reportPath (path->string (file-name-from-path path))
+                         'families (list "filters" "instances" "driverServices"
+                                         "processSnapshot" "signatureHeuristics")
+                         'probeRan (if (getenv "FILEBOUNDARY_PROBE") #t #f))
+                   null null))
          (bad-usage))]
     [(equal? command "verify")
      (let ([valid?
