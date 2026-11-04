@@ -21,6 +21,13 @@
             "kind": "scalar",
             "name": "String"
           }
+        },
+        {
+          "name": "pad",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
         }
       ],
       "name": "decrypt-summary",
