@@ -251,7 +251,7 @@
        (define in-path (hash-ref flags "--in" (lambda () #f)))
        (define out-path (hash-ref flags "--out" (lambda () #f)))
        (define pad-path (hash-ref flags "--pad" (lambda () #f)))
-       (if (and in-path out-path)
+       (if (and in-path out-path pad-path)
            (let ([report (decrypt-file in-path out-path pad-path)])
              (values 0 "ok"
                      (hash-set report
