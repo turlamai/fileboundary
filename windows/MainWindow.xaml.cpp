@@ -375,8 +375,10 @@ void MainWindow::FileBox_DragOver(
     winrt::Windows::Foundation::IInspectable const&,
     winrt::Microsoft::UI::Xaml::DragEventArgs const& args) {
   args.Handled(true);
+  // The operation enum stayed in the UWP namespace in this projection.
   args.AcceptedOperation(
-      winrt::Microsoft::UI::Xaml::DataPackageOperation::Copy);
+      winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::
+          Copy);
 }
 
 void MainWindow::FileBox_Drop(
