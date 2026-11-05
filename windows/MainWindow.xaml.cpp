@@ -210,6 +210,38 @@ void MainWindow::RunUpdateCheckAsync() {
 // resume_foreground in this projection - completion hops via TryEnqueue.
 namespace {
 
+// Picks an encrypted file and fills both the input and the auto-generated
+// output TextBox: <dir>\<basename>_decrypted.<ext> in the same directory.
+winrt::fire_and_forget PickDecryptInputAndFillOutput(
+    Microsoft::UI::Xaml::Controls::TextBox input_box,
+    Microsoft::UI::Xaml::Controls::TextBox output_box,
+    HWND hwnd,
+    Microsoft::UI::Dispatching::DispatcherQueue dq) {
+  try {
+    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
+    picker.FileTypeFilter().ReplaceAll({L"*"});
+    picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
+    auto file = co_await picker.PickSingleFileAsync();
+    dq.TryEnqueue([input_box, output_box, file]() mutable {
+      if (!file) return;
+      auto path = file.Path();
+      input_box.Text(path);
+      // auto-generate output: <dir>\<basename>_decrypted<ext>
+      auto last_slash = path.find_last_of(L'\\');
+      if (last_slash == std::wstring::npos)
+        last_slash = path.find_last_of(L'/');
+      if (last_slash == std::wstring::npos) return;
+      auto dir = path.substr(0, last_slash + 1);
+      auto name = path.substr(last_slash + 1);
+      auto dot = name.find_last_of(L'.');
+      auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
+      auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
+      output_box.Text(dir + basename + L"_decrypted" + ext);
+    });
+  } catch (...) {
+  }
+}
+
 winrt::fire_and_forget PickOpenInto(Microsoft::UI::Xaml::Controls::TextBox box,
                                     HWND hwnd,
                                     Microsoft::UI::Dispatching::DispatcherQueue dq) {
@@ -275,35 +307,12 @@ void MainWindow::BrowseVerifyExport_Click(
 void MainWindow::BrowseDecryptInput_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  // Picking the encrypted file also auto-fills the output path:
-  // same directory, same basename + "_decrypted", same extension.
-  // The user never touches the output field unless they want to.
-  try {
-    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
-    picker.FileTypeFilter().ReplaceAll({L"*"});
-    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
-    auto file = co_await picker.PickSingleFileAsync();
-    DispatcherQueue().TryEnqueue([this, file]() mutable {
-      if (!file) return;
-      auto path = file.Path();
-      DecryptInputBox().Text(path);
-      // auto-generate: <dir>\<basename>_decrypted<ext>
-      auto dir = path;
-      auto last_slash = dir.find_last_of(L'\\');
-      if (last_slash == std::wstring::npos) last_slash = dir.find_last_of(L'/');
-      if (last_slash != std::wstring::npos) {
-        dir = dir.substr(0, last_slash + 1);
-      } else {
-        dir = L"";
-      }
-      auto name = path.substr(last_slash == std::wstring::npos ? 0 : last_slash + 1);
-      auto dot = name.find_last_of(L'.');
-      auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
-      auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
-      DecryptOutputBox().Text(dir + basename + L"_decrypted" + ext);
-    });
-  } catch (...) {
-  }
+  // Picking the encrypted file also auto-fills the output path via
+  // PickDecryptInput (a fire_and_forget below): same directory,
+  // same basename + "_decrypted", same extension.
+  PickDecryptInputAndFillOutput(
+      DecryptInputBox(), DecryptOutputBox(),
+      WindowHandle(), DispatcherQueue());
 }
 
 void MainWindow::BrowseDecryptPad_Click(
