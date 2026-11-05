@@ -183,11 +183,7 @@ void MainWindow::RunUpdateCheckAsync() {
           try {
             auto message = result.get();
             dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowTextResult(
-                    L"检查更新完成",
-                    winrt::to_hstring(message),
-                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational,
-                    L"检查完成。");
+              if (auto window = weak.get()) window->ShowUpdateCheckResult(message);
             });
           } catch (std::exception const& e) {
             auto error = std::string(e.what());
@@ -694,6 +690,52 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
     ShowTextResult(L"解密完成", winrt::to_hstring(json),
                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
                    L"解密完成。");
+  }
+}
+
+// Friendly rendering of the update check: verdict-first, no raw JSON.
+// The raw JSON stays one click away via the copy button.
+void MainWindow::ShowUpdateCheckResult(std::string const& json) {
+  SetBusyUi(false);
+  try {
+    auto const obj =
+        winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(json));
+    auto const available = obj.GetNamedBoolean(L"updateAvailable");
+    auto const current = obj.GetNamedString(L"currentVersion");
+    auto const latest = obj.GetNamedString(L"latestVersion");
+    std::wstring title;
+    std::wstring body;
+    if (available) {
+      title = L"发现新版本";
+      body = L"当前版本：" +
+             std::wstring{current.c_str()} +
+             L"
+最新版本：" +
+             std::wstring{latest.c_str()} +
+             L"
+请到 GitHub Releases 页面下载新版本的 MSI 安装包。";
+      StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
+      StatusBar().Message(L"发现新版本。");
+    } else {
+      title = L"已是最新版本";
+      body = L"当前版本：" +
+             std::wstring{current.c_str()} +
+             L"
+最新版本：" +
+             std::wstring{latest.c_str()} +
+             L"
+无需更新。";
+      StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
+      StatusBar().Message(L"已是最新版本。");
+    }
+    ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+    ResultTitle().Text(title);
+    ResultText().Text(body);
+    last_result_text_ = winrt::to_hstring(json);
+  } catch (...) {
+    ShowTextResult(L"检查结果", winrt::to_hstring(json),
+                   Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational,
+                   L"检查完成。");
   }
 }
 

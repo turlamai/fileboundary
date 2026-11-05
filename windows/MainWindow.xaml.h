@@ -77,6 +77,7 @@ struct MainWindow : MainWindowT<MainWindow> {
                       Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
                       std::wstring const& status_message);
   void ShowDecryptResult(std::string const& json);
+  void ShowUpdateCheckResult(std::string const& json);
   void ShowTwinResult(std::string const& json);
   void ShowFailed(std::string const& what);
   void SetReadyUi();

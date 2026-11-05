@@ -8,6 +8,7 @@
 ;; `+dev`.
 
 (require racket/file
+         racket/path
          racket/runtime-path
          racket/string)
 
@@ -22,8 +23,17 @@
 (define version
   (hash-ref (with-input-from-file project-file read) 'version))
 
+;; The +dev marker only makes sense in a source checkout. Packaged
+;; distributions (raco rivet package / release train) do not carry .git,
+;; so a packaged app reports the bare version — matching the release
+;; tag and the update channel (owner report: GUI showed 0.6.2+dev).
 (define product-version
-  (let ([commit (getenv "FILEBOUNDARY_BUILD_COMMIT")])
-    (if (and commit (non-empty-string? commit))
-        (string-append version "+" commit)
-        (string-append version "+dev"))))
+  (let ([commit (getenv "FILEBOUNDARY_BUILD_COMMIT")]
+        [dev-tree?
+         (let-values (((base _name _dir?) (split-path (simple-form-path project-file))))
+           (directory-exists? (build-path (simplify-path (path->complete-path base)) ".git")))])
+    (cond
+      [(and dev-tree? commit (non-empty-string? commit))
+       (string-append version "+" commit)]
+      [dev-tree? (string-append version "+dev")]
+      [else version])))
