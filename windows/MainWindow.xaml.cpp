@@ -700,16 +700,25 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
       auto const verified = static_cast<int>(obj.GetNamedNumber(L"verified"));
       auto const total = static_cast<int>(obj.GetNamedNumber(L"total"));
       title = (verified == total) ? L"解密成功" : L"解密完成（有校验未通过）";
-      body = L"逐条目完整性校验：" + std::to_wstring(verified) + L" / " +
-             std::to_wstring(total) + L" 通过\n";
       auto const entries = obj.GetNamedArray(L"entries");
-      for (auto const& item : entries) {
-        auto const entry = item.GetObject();
-        auto const name = entry.GetNamedString(L"name");
-        auto const ok = entry.GetNamedBoolean(L"crcOk");
-        body += ok ? L"  \u2713 " : L"  \u2717 ";
-        body += std::wstring{winrt::to_hstring(name).c_str()};
-        body += L"\n";
+      // summary first: a clean run is one line, only failures get their
+      // own rows (the full per-entry list stays available via the copy
+      // button, which carries the raw report)
+      if (verified == total) {
+        body = L"逐条目完整性校验：全部 " + std::to_wstring(total) +
+               L" 个组成部分通过\n";
+      } else {
+        body = L"逐条目完整性校验：" + std::to_wstring(verified) + L" / " +
+               std::to_wstring(total) + L" 通过，未通过的条目：\n";
+        for (auto const& item : entries) {
+          auto const entry = item.GetObject();
+          if (!entry.GetNamedBoolean(L"crcOk")) {
+            body += L"  \u2717 " +
+                    std::wstring{winrt::to_hstring(entry.GetNamedString(L"name"))
+                                     .c_str()} +
+                    L"\n";
+          }
+        }
       }
       body += (verified == total)
           ? L"输出文件：" + std::wstring{winrt::to_hstring(output).c_str()} +
@@ -800,8 +809,7 @@ void MainWindow::ShowTwinResult(std::string const& json) {
       title = L"密钥恢复成功";
       body = L"密钥已完整恢复（" + std::to_wstring(covered) + L" / 512 列），" +
              L"保存为：" + std::wstring{winrt::to_hstring(output).c_str()} +
-             L"\n要用它解密文件：先设置环境变量 FILEBOUNDARY_PAD 指向这个密钥文件，"
-             L"再从「解密文件」面板操作。";
+             L"\n要用它解密文件：在「解密文件」面板选择这个密钥文件即可。";
     } else {
       title = L"密钥只恢复了一部分";
       body = L"只恢复了 " + std::to_wstring(covered) + L" / 512 列（缺 " +

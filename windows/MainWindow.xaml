@@ -329,16 +329,20 @@
                     </Grid>
 
                     <!--  ================= shared result card =================  -->
+                    <!--  MaxHeight keeps long results from pushing the
+                          panel's action buttons out of the viewport: the
+                          text area scrolls inside the card instead.  -->
                     <Border Grid.Row="1" x:Name="ResultCard" Visibility="Collapsed"
                             Margin="36,0,36,16" Padding="16,12"
                             CornerRadius="8"
+                            MaxHeight="400"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
@@ -353,10 +357,14 @@
                                         Padding="8,2" FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
                             </Grid>
-                            <TextBlock Grid.Row="1" x:Name="ResultText" TextWrapping="Wrap"
-                                       IsTextSelectionEnabled="True"
-                                       FontSize="13"
-                                       AutomationProperties.AutomationId="scan-result" />
+                            <ScrollViewer Grid.Row="1" Margin="0,4,0,0"
+                                          VerticalScrollBarVisibility="Auto"
+                                          VerticalScrollMode="Enabled">
+                                <TextBlock x:Name="ResultText" TextWrapping="Wrap"
+                                           IsTextSelectionEnabled="True"
+                                           FontSize="13"
+                                           AutomationProperties.AutomationId="scan-result" />
+                            </ScrollViewer>
                         </Grid>
                     </Border>
                 </Grid>
