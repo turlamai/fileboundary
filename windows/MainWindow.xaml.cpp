@@ -275,17 +275,35 @@ void MainWindow::BrowseVerifyExport_Click(
 void MainWindow::BrowseDecryptInput_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  PickOpenInto(DecryptInputBox(), WindowHandle(), DispatcherQueue());
-}
-
-void MainWindow::BrowseDecryptOutput_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  // Type choices give the dialog a sane filter without restricting the
-  // written bytes (the engine writes what it writes).
-  PickSaveInto(
-      DecryptOutputBox(), WindowHandle(), DispatcherQueue(), L"decrypted",
-      {{L"文档", {L".docx", L".xlsx", L".pptx"}}, {L"PDF", {L".pdf"}}});
+  // Picking the encrypted file also auto-fills the output path:
+  // same directory, same basename + "_decrypted", same extension.
+  // The user never touches the output field unless they want to.
+  try {
+    winrt::Windows::Storage::Pickers::FileOpenPicker picker;
+    picker.FileTypeFilter().ReplaceAll({L"*"});
+    picker.as<::IInitializeWithWindow>()->Initialize(WindowHandle());
+    auto file = co_await picker.PickSingleFileAsync();
+    DispatcherQueue().TryEnqueue([this, file]() mutable {
+      if (!file) return;
+      auto path = file.Path();
+      DecryptInputBox().Text(path);
+      // auto-generate: <dir>\<basename>_decrypted<ext>
+      auto dir = path;
+      auto last_slash = dir.find_last_of(L'\\');
+      if (last_slash == std::wstring::npos) last_slash = dir.find_last_of(L'/');
+      if (last_slash != std::wstring::npos) {
+        dir = dir.substr(0, last_slash + 1);
+      } else {
+        dir = L"";
+      }
+      auto name = path.substr(last_slash == std::wstring::npos ? 0 : last_slash + 1);
+      auto dot = name.find_last_of(L'.');
+      auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
+      auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
+      DecryptOutputBox().Text(dir + basename + L"_decrypted" + ext);
+    });
+  } catch (...) {
+  }
 }
 
 void MainWindow::BrowseDecryptPad_Click(
