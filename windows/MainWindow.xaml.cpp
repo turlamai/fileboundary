@@ -405,6 +405,7 @@ void MainWindow::SetBusyUi(bool busy) {
   VerifyButton().IsEnabled(!busy && backend_ && backend_->running());
   DecryptButton().IsEnabled(!busy && backend_ && backend_->running());
   TwinButton().IsEnabled(!busy && backend_ && backend_->running());
+  UpdateCheckButton().IsEnabled(!busy && backend_ && backend_->running());
   // the banner only speaks while something is happening; an idle app
   // stays quiet (owner feedback: the permanent ready banner is noise)
   StatusBar().IsOpen(busy);
