@@ -141,7 +141,7 @@
                                                FontWeight="SemiBold" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Text="查看这台电脑上的 Windows 过滤驱动——透明加密软件的驱动会出现在这里。只读枚举，不会改动任何驱动。权限不足导致条目缺失时，不代表电脑上没有加密驱动。" />
+                                               Text="查看这台电脑上注册了哪些 Windows 过滤驱动——透明加密软件的驱动会出现在这里，这一步不需要管理员权限。以管理员身份运行时，还会额外列出当前正在运行的过滤驱动和卷实例。只读枚举，不会改动任何驱动。" />
                                     <Button x:Name="DoctorButton" Content="开始诊断"
                                             Style="{ThemeResource AccentButtonStyle}"
                                             HorizontalAlignment="Left" Margin="0,4,0,0"

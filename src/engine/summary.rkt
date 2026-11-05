@@ -43,15 +43,36 @@
   (define checks (hash-ref report 'checks))
   (define (status name)
     (hash-ref (hash-ref checks name) 'status))
+  (define registry (hash-ref checks 'registryFilters))
+  (define filters
+    (for/list ([f (in-list (hash-ref registry 'filters null))])
+      (format "~a (altitude ~a)"
+              (hash-ref f 'name)
+              (string-join
+               (hash-ref f 'altitudes null) "/"))))
+  (define heuristics (hash-ref checks 'signatureHeuristics))
+  (define matched (hash-ref heuristics 'matchedNames null))
   (format (string-append
-           "Read-only Windows Filter Manager diagnostics.\n"
-           "Filters: ~a. Instances: ~a.\n"
+           "Read-only diagnostics. The driver list below needs no administrator.\n"
+           "Registered filter drivers: ~a\n~a\n"
+           "Heuristic matches for known encryption/EDR products: ~a\n"
+           "Filter Manager runtime listing (needs administrator): filters ~a, instances ~a.\n"
            "~a\n"
-           "A failed or denied check is not evidence that no filters exist.")
+           "A name on this list suggests transparent-encryption involvement; it does not prove any file is recoverable.")
+          (hash-ref registry 'filterCount 0)
+          (if (null? filters)
+              "  (none found)"
+              (string-join
+               (for/list ([f (in-list filters)])
+                 (string-append "  " f))
+               "\n"))
+          (if (null? matched)
+              "none"
+              (string-join matched ", "))
           (status 'filters)
           (status 'instances)
           (if (hash-ref report 'degraded)
-              "Results incomplete; check privileges and local diagnostic tools."
+              "Runtime listing incomplete without administrator rights; the registry list above is already complete for what is REGISTERED."
               "Enumeration commands completed; this is not proof of file recovery.")))
 
 ;; A presentation-friendly view of the same read-only authorized-export check

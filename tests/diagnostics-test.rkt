@@ -74,3 +74,26 @@
     (check-equal? (hash-ref hung 'exitCode) 'null)
     (check-true (< (hash-ref hung 'durationMs) 5000))
     (check-equal? (hash-ref unavailable 'status) "launchFailed")))
+
+;; Chinese-Windows fltmc output must classify as elevation, not a
+;; generic failure (the operator-facing remedy depends on it)
+(check-equal? (classify-fltmc-result 5 "拒绝访问。") "requiresElevation")
+(check-equal? (classify-fltmc-result 5 "请求的操作需要提升。") "requiresElevation")
+
+;; registry filter parsing: group instances per service, keep order
+(define sample-reg-output
+  (string-append
+   "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\zdrv\\Instances\\zdrv\r\n"
+   "    Altitude    REG_SZ    149000\r\n"
+   "\r\n"
+   "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\adrv\\Instances\\adrv\r\n"
+   "    Altitude    REG_SZ    389100\r\n"
+   "\r\n"
+   "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\adrv\\Instances\\adrv2\r\n"
+   "    Altitude    REG_SZ    389101\r\n"))
+(define parsed (parse-registry-filters sample-reg-output))
+(check-equal? (length parsed) 2)
+(check-equal? (hash-ref (car parsed) 'name) "adrv")
+(check-equal? (hash-ref (car parsed) 'altitudes) (list "389100" "389101"))
+(check-equal? (hash-ref (cadr parsed) 'name) "zdrv")
+(check-equal? (parse-registry-filters "") null)

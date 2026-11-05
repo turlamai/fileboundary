@@ -8,7 +8,8 @@
          racket/file
          racket/list
          racket/port
-         racket/string)
+         racket/string
+         "winproc.rkt")
 
 (provide doctor-report
          run-fltmc
@@ -16,6 +17,8 @@
          bounded-capture
          driver-query
          task-list
+         registry-filters
+         parse-registry-filters
          signature-heuristics
          probe-file!
          report->jsexpr
@@ -49,7 +52,11 @@
   (cond
     [timed-out? "timedOut"]
     [(and (exact-integer? exit-code) (zero? exit-code)) "ok"]
-    [(regexp-match? #rx"(?i:access is denied|requires elevation)" combined-output)
+    ;; fltmc speaks the process UI language: Chinese Windows emits
+    ;; 拒绝访问 rather than the English strings, and misclassifying
+    ;; that as a generic failure hides the actual remedy.
+    [(regexp-match? #rx"(?i:access is denied|requires elevation|拒绝访问|需要提升|请求的操作需要提升)"
+                    combined-output)
      "requiresElevation"]
     [else "failed"]))
 
@@ -59,6 +66,15 @@
         'stdout ""
         'stderr ""
         'truncated #f
+        'capturedAtUnixMs started
+        'durationMs (max 0 (- (now-ms) started))))
+
+(define (result-hash status code out err truncated? started)
+  (hash 'status status
+        'exitCode code
+        'stdout out
+        'stderr err
+        'truncated truncated?
         'capturedAtUnixMs started
         'durationMs (max 0 (- (now-ms) started))))
 
@@ -72,44 +88,64 @@
     ;; failure from a genuine diagnostic command failure before starting.
     (unless (file-exists? executable)
       (error 'run-bounded-child "diagnostic executable unavailable"))
-    (define-values (process stdout stdin stderr)
-      (apply subprocess #f #f #f executable arguments))
-    (close-output-port stdin)
-    (define out-value (box (hash 'text "" 'truncated #t)))
-    (define err-value (box (hash 'text "" 'truncated #t)))
-    ;; Drain stdout/stderr concurrently before waiting; neither pipe can starve.
-    (define out-worker
-      (thread (lambda () (set-box! out-value (bounded-capture stdout)))))
-    (define err-worker
-      (thread (lambda () (set-box! err-value (bounded-capture stderr)))))
-    (define finished? (sync/timeout seconds process))
-    (unless finished?
-      ;; Terminate only the short-lived diagnostic child, never a filter driver.
-      (subprocess-kill process #t))
-    (subprocess-wait process)
-    (unless (sync/timeout 2 out-worker)
-      (close-input-port stdout)
-      (kill-thread out-worker))
-    (unless (sync/timeout 2 err-worker)
-      (close-input-port stderr)
-      (kill-thread err-worker))
-    (unless (port-closed? stdout) (close-input-port stdout))
-    (unless (port-closed? stderr) (close-input-port stderr))
-    (define out (unbox out-value))
-    (define err (unbox err-value))
-    (define code (if finished? (subprocess-status process) 'null))
-    (hash 'status (classify-fltmc-result
-                   code
-                   (string-append (hash-ref out 'text)
-                                  (hash-ref err 'text))
-                   (not finished?))
-          'exitCode code
-          'stdout (hash-ref out 'text)
-          'stderr (hash-ref err 'text)
-          'truncated (or (hash-ref out 'truncated)
-                         (hash-ref err 'truncated))
-          'capturedAtUnixMs started
-          'durationMs (max 0 (- (now-ms) started)))))
+    (case (system-type)
+      [(windows)
+       ;; GUI hosts have no console: a plain subprocess launch would
+       ;; flash a black window for every console tool. winproc routes
+       ;; stdio through temp files instead (CREATE_NO_WINDOW).
+       (define-values (code out err timed-out?)
+         (run-hidden-capture executable arguments seconds))
+       (define combined (string-append out err))
+       (result-hash (classify-fltmc-result code combined timed-out?)
+                    code
+                    (bounded-truncate out)
+                    (bounded-truncate err)
+                    (> (string-length combined) capture-limit)
+                    started)]
+      [else
+       (define-values (process stdout stdin stderr)
+         (apply subprocess #f #f #f executable arguments))
+       (close-output-port stdin)
+       (define out-value (box (hash 'text "" 'truncated #t)))
+       (define err-value (box (hash 'text "" 'truncated #t)))
+       ;; Drain stdout/stderr concurrently before waiting; neither pipe can starve.
+       (define out-worker
+         (thread (lambda () (set-box! out-value (bounded-capture stdout)))))
+       (define err-worker
+         (thread (lambda () (set-box! err-value (bounded-capture stderr)))))
+       (define finished? (sync/timeout seconds process))
+       (unless finished?
+         ;; Terminate only the short-lived diagnostic child, never a filter driver.
+         (subprocess-kill process #t))
+       (subprocess-wait process)
+       (unless (sync/timeout 2 out-worker)
+         (close-input-port stdout)
+         (kill-thread out-worker))
+       (unless (sync/timeout 2 err-worker)
+         (close-input-port stderr)
+         (kill-thread err-worker))
+       (unless (port-closed? stdout) (close-input-port stdout))
+       (unless (port-closed? stderr) (close-input-port stderr))
+       (define out (unbox out-value))
+       (define err (unbox err-value))
+       (define code (if finished? (subprocess-status process) 'null))
+       (hash 'status (classify-fltmc-result
+                      code
+                      (string-append (hash-ref out 'text)
+                                     (hash-ref err 'text))
+                      (not finished?))
+             'exitCode code
+             'stdout (hash-ref out 'text)
+             'stderr (hash-ref err 'text)
+             'truncated (or (hash-ref out 'truncated)
+                            (hash-ref err 'truncated))
+             'capturedAtUnixMs started
+             'durationMs (max 0 (- (now-ms) started)))])))
+
+(define (bounded-truncate text)
+  (if (> (string-length text) capture-limit)
+      (substring text 0 capture-limit)
+      text))
 
 (define (run-fltmc subcommand)
   (unless (member subcommand '("filters" "instances"))
@@ -127,11 +163,13 @@
 (define (doctor-report [probe-path #f])
   (define filters (run-fltmc "filters"))
   (define instances (run-fltmc "instances"))
+  (define registry (registry-filters))
   (define driver-services (driver-query))
   (define processes (task-list))
   (define heuristics
     (signature-heuristics
-     (filter-row-names filters)
+     (append (filter-row-names filters)
+             (family-names registry 'filters))
      (family-names driver-services 'drivers)
      (family-names processes 'processes)))
   (define probe-entry
@@ -145,6 +183,7 @@
   (define checks
     (hash 'filters filters
           'instances instances
+          'registryFilters registry
           'driverServices driver-services
           'processSnapshot processes
           'signatureHeuristics heuristics))
@@ -157,6 +196,62 @@
                       (not (equal? (hash-ref instances 'status) "ok")))
         'evidence "measured"
         'scope "read-only-diagnostics"))
+
+;; ---------- family 6: registered filters from the registry ----------
+
+;; Every registered filesystem filter driver carries an Altitude value
+;; under Services\<name>\Instances\..., and that part of HKLM is
+;; readable without elevation — unlike `fltmc filters`, which fails
+;; for a plain user. This is the primary filter listing; fltmc stays
+;; as the (elevation-gated) runtime view.
+(define (registry-filters)
+  (define started (now-ms))
+  (cond
+    [(not (eq? (system-type 'os) 'windows))
+     (blank-result "unsupportedPlatform" started)]
+    [else
+     (define executable
+       (or (find-executable-path "reg.exe")
+           (and (file-exists? "C:/Windows/System32/reg.exe")
+                (string->path "C:/Windows/System32/reg.exe"))))
+     (if (not executable)
+         (blank-result "toolUnavailable" started)
+         (let ((r (run-bounded-child
+                   executable
+                   (list "query" "HKLM\\SYSTEM\\CurrentControlSet\\Services"
+                         "/s" "/f" "Altitude"))))
+           (define rows (parse-registry-filters (hash-ref r 'stdout "")))
+           (hash-set (hash-set r 'filterCount (length rows))
+                     'filters rows)))]))
+
+;; reg query output shape: a key line
+;;   HKEY_LOCAL_MACHINE\...\Services\<svc>\Instances\<inst>
+;; followed by an indented "Altitude    REG_SZ    <value>" line.
+;; Instances of one driver group under the service name.
+(define (parse-registry-filters text)
+  (define seen (make-hash))
+  (define current-key #f)
+  (for ([line (in-list (string-split text "\n"))])
+    (cond
+      [(string-prefix? (string-trim line) "HKEY_")
+       (set! current-key (string-trim line))]
+      [(and current-key (regexp-match? #rx"Altitude" line))
+       (define m
+         (regexp-match #rx"Services\\\\([^\\\\]+)\\\\Instances" current-key))
+       (define parts (string-split (string-trim line) " "))
+       (define alt (if (pair? parts) (last parts) ""))
+       (when (and m alt (not (equal? alt "")))
+         (hash-update! seen (cadr m)
+                       (lambda (old) (cons alt old))
+                       null))]
+      [else (void)]))
+  (sort
+   (for/list ([(svc alts) (in-hash seen)])
+     (hash 'name svc
+           'altitudes (reverse (remove-duplicates alts))
+           'evidence "measured"))
+   string<?
+   #:key (lambda (h) (hash-ref h 'name))))
 
 ;; ---------- family 2: driver / service configuration ----------
 
@@ -223,7 +318,11 @@
 ;; a matching name suggests transparent-encryption involvement and never
 ;; proves it. Keywords stay deliberately short and generic.
 (define heuristic-keywords
-  (list "esafenet" "edr" "dlp" "safedog" "huorong" "titanagent" "qax"))
+  (list "esafenet" "dlp" "safedog" "huorong" "titanagent" "qax"
+        ;; transparent-encryption products seen in the field; the bare
+        ;; "edr" substring used to false-positive on QWAVEdrv and
+        ;; WindowsTrustedRT, so it is deliberately absent
+        "ahflt" "titan"))
 
 (define (family-names family-check key)
   (if (not (hash? family-check))
