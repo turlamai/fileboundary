@@ -316,8 +316,6 @@ winrt::fire_and_forget PickSaveInto(
   }
 }
 
-}  // namespace
-
 void MainWindow::BrowseScan_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
