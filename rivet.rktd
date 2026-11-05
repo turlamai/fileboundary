@@ -1,7 +1,7 @@
 #hasheq((name . "fileboundary")
         (display-name . "FileBoundary")
         (publisher . "Turlamai")
-        (version . "0.6.7")
+        (version . "0.6.8")
         (build . 1)
         (identifier . "dev.turlamai.fileboundary")
         (release-channel . stable)
