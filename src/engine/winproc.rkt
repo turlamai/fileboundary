@@ -247,7 +247,10 @@
     (define si (make-bytes STARTUPINFOW-SIZE))
     (integer->integer-bytes STARTUPINFOW-SIZE 4 #f #t si 0)
     (with-handlers ([exn:fail?
-                     (lambda (_)
+                     (lambda (e)
+                       (eprintf "winproc capture failed: ~a
+"
+                                (if (exn? e) (exn-message e) e))
                        (values 'null "" "" #f))])
       (define pi
         (launch "C:/Windows/System32/cmd.exe" wrapped CREATE_NO_WINDOW si))

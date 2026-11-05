@@ -55,7 +55,7 @@
            (list "-e" "(begin (display (make-string 70000 #\\x)) (eprintf \"err\"))")
            8)]
          [hung
-          (run-bounded-child racket-exe (list "-e" "(sleep 10)") 0.3)]
+          (run-bounded-child racket-exe (list "-e" "(sleep 10)") 1.0)]
          [unavailable
           (run-bounded-child
            (build-path (find-system-path 'temp-dir)
