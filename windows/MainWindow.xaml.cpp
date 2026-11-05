@@ -709,22 +709,18 @@ void MainWindow::ShowUpdateCheckResult(std::string const& json) {
       title = L"发现新版本";
       body = L"当前版本：" +
              std::wstring{current.c_str()} +
-             L"
-最新版本：" +
+             L"\n最新版本：" +
              std::wstring{latest.c_str()} +
-             L"
-请到 GitHub Releases 页面下载新版本的 MSI 安装包。";
+             L"\n请到 GitHub Releases 页面下载新版本的 MSI 安装包。";
       StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
       StatusBar().Message(L"发现新版本。");
     } else {
       title = L"已是最新版本";
       body = L"当前版本：" +
              std::wstring{current.c_str()} +
-             L"
-最新版本：" +
+             L"\n最新版本：" +
              std::wstring{latest.c_str()} +
-             L"
-无需更新。";
+             L"\n无需更新。";
       StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
       StatusBar().Message(L"已是最新版本。");
     }
