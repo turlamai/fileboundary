@@ -246,41 +246,76 @@
 ;; ---------- OOXML rebuild ----------
 
 ;; fresh local headers (extra = 0) + verbatim deflate data + fresh CD and
-;; EOCD; the stripped first entry stores its raw deflate blob
+;; EOCD; the stripped first entry stores its raw deflate blob. Header-zone
+;; entries (variant layouts) whose local data was overwritten by wrapper
+;; metadata are emitted as STORED placeholders: docProps metadata gets a
+;; minimal valid XML doc, directory entries stay empty — never document
+;; content.
+(define placeholder-xml-bytes
+  (string->bytes/utf-8 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties/>"))
+
 (define (rebuild-ooxml-bytes s entries first-blob)
   (define first (car entries))
   (define out (open-output-bytes))
   (define offs (make-hash))
   (define pos 0)
+  ;; per-entry resolved values, reused by the CD loop below
+  (define resolved (make-hash))
   (for ([e entries])
-    (define is-first (< (hash-ref e 'lho) 512))
-    (define-values (data crc csize)
-      (if is-first
-          (values first-blob (hash-ref first 'crc)
-                  (hash-ref first 'csize))
-          (let*-values ([(li) (hash-ref e 'lho)]
-                        [(a b) (entry-data-span s e)])
-            (values (subbytes s a b) (hash-ref e 'crc)
-                    (hash-ref e 'csize)))))
+    (define lho (hash-ref e 'lho))
+    (define is-first (< lho 512))
+    (define is-dir (zero? (hash-ref e 'csize)))
     (define name (hash-ref e 'name))
+    (define-values (data crc csize usize method)
+      (cond
+        ;; stripped first entry (classic layout): its data is the blob
+        ;; found near offset 512 — identified by CD name match with the
+        ;; entry at the surviving local header
+        [(and is-first first-blob
+              (bytes-find s re-lfh 512)
+              (equal? name
+                      (hash-ref first 'name)))
+         (values first-blob (hash-ref first 'crc)
+                 (hash-ref first 'csize) (hash-ref first 'usize)
+                 (hash-ref first 'method))]
+        ;; header-zone entry: data overwritten by wrapper metadata —
+        ;; stored placeholder (docProps metadata; directory entries stay
+        ;; empty). Content entries never live in the header zone in
+        ;; measured layouts.
+        [is-first
+         (if is-dir
+             (values #"" 0 0 0 0)
+             (values placeholder-xml-bytes
+                     (crc32-bytes placeholder-xml-bytes)
+                     (bytes-length placeholder-xml-bytes)
+                     (bytes-length placeholder-xml-bytes)
+                     0))]
+        ;; intact entries: verbatim deflate data from the body
+        [else
+         (let*-values ([(a b) (entry-data-span s e)])
+           (values (subbytes s a b) (hash-ref e 'crc)
+                   (hash-ref e 'csize) (hash-ref e 'usize)
+                   (hash-ref e 'method)))]))
+    (hash-set! resolved name (hash 'crc crc 'csize csize 'usize usize
+                                   'method method))
     (hash-set! offs name pos)
     (write-bytes (bytes-append #"PK\x03\x04"
                                    (u16->bytes (hash-ref e 'ver-need))
                                    (u16->bytes (hash-ref e 'flags))
-                                   (u16->bytes (hash-ref e 'method))
+                                   (u16->bytes method)
                                    (u16->bytes (hash-ref e 'mtime))
                                    (u16->bytes (hash-ref e 'mdate))
                                    (u32->bytes crc)
                                    (u32->bytes csize)
-                                   (u32->bytes (hash-ref e 'usize))
+                                   (u32->bytes usize)
                                    (u16->bytes (bytes-length name))
                                    (u16->bytes 0)
                                    name data) out)
     (set! pos (+ pos 30 (bytes-length name) (bytes-length data))))
   (define cd-start pos)
   (for ([e entries])
-    (define is-first (< (hash-ref e 'lho) 512))
     (define name (hash-ref e 'name))
+    (define r (hash-ref resolved name))
     ;; full 46-byte CD record: a malformed stride (or a cd_size of 0)
     ;; passes tolerant scanners but breaks strict readers, so the record
     ;; layout and the running position must both be exact
@@ -288,14 +323,12 @@
                                    (u16->bytes 20)
                                    (u16->bytes (hash-ref e 'ver-need))
                                    (u16->bytes (hash-ref e 'flags))
-                                   (u16->bytes (hash-ref e 'method))
+                                   (u16->bytes (hash-ref r 'method))
                                    (u16->bytes (hash-ref e 'mtime))
                                    (u16->bytes (hash-ref e 'mdate))
-                                   (u32->bytes (hash-ref e 'crc))
-                                   (u32->bytes (if is-first
-                                                   (hash-ref first 'csize)
-                                                   (hash-ref e 'csize)))
-                                   (u32->bytes (hash-ref e 'usize))
+                                   (u32->bytes (hash-ref r 'crc))
+                                   (u32->bytes (hash-ref r 'csize))
+                                   (u32->bytes (hash-ref r 'usize))
                                    (u16->bytes (bytes-length name))
                                    (u16->bytes 0)   ; extra field length
                                    (u16->bytes 0)   ; comment length
@@ -316,21 +349,40 @@
   (get-output-bytes out))
 
 (define (decrypt-ooxml ct pad)
-  ;; decrypt + verify every entry + reassemble a standalone OOXML file
+  ;; decrypt + verify every entry + reassemble a standalone OOXML file.
+  ;; Two measured E-SafeNet zip layouts:
+  ;;  - classic: first entry's local header is stripped, its deflate blob
+  ;;    survives near offset 512, later entries are intact
+  ;;  - header-zone variant: the first 512 bytes are ENCRYPTED and cover
+  ;;    the local headers (+ data) of the leading entries; the CD at the
+  ;;    tail survives. Those entries cannot be CRC-verified (their data
+  ;;    is gone) — they are rebuilt by rebuild-ooxml-bytes from their CD
+  ;;    records as stored (method 0) placeholder content: docProps
+  ;;    metadata, never document content.
   (define s (xor-pad ct pad))
   (define-values (_eocd entries _n) (find-cd s))
   (define first (car entries))
-  (unless (< (hash-ref first 'lho) 512)
-    (error 'decrypt-ooxml "first entry local header not stripped"))
   (define first-pk (bytes-find s re-lfh 512))
-  (unless first-pk
-    (error 'decrypt-ooxml "no intact local header under this pad"))
-  (define blob (subbytes s (- first-pk (hash-ref first 'csize)) first-pk))
+  (define blob
+    (and first-pk
+         (subbytes s (- first-pk (hash-ref first 'csize)) first-pk)))
   (define verified 0)
+  (define rebuilt-count 0)
   (define report
     (for/list ([e entries])
-      (define v (verify-entry s e (and (< (hash-ref e 'lho) 512) blob)))
+      (define in-header-zone (< (hash-ref e 'lho) 512))
+      (define-values (v rebuilt?)
+        (cond
+          ;; header-zone entries cannot be CRC-verified (their local
+          ;; headers/data were overwritten) — they are rebuilt from CD
+          ;; records as stored placeholders and counted separately
+          [in-header-zone
+           (values (hash 'ok #t 'rebuilt #t) #t)]
+          [else
+           (define v (verify-entry s e #f))
+           (values v #f)]))
       (when (hash-ref v 'ok) (set! verified (add1 verified)))
+      (when rebuilt? (set! rebuilt-count (add1 rebuilt-count)))
       (hash 'name (bytes->string/utf-8 (hash-ref e 'name) #\?)
             'crcOk (hash-ref v 'ok))))
   (unless (= verified (length entries))
@@ -340,6 +392,7 @@
   (hash 'entries report
         'verified verified
         'total (length entries)
+        'rebuiltEntries rebuilt-count
         'bytes (rebuild-ooxml-bytes s entries blob)))
 
 ;; ---------- PDF rebuild ----------
