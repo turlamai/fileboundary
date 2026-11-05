@@ -33,6 +33,8 @@
          rebuild-ooxml-bytes
          decrypt-ooxml
          decrypt-pdf
+         salvage-objects
+         extract-objstm
          twin-vote
          write-twin-pad
          decrypt-file)
@@ -135,11 +137,32 @@
              #:unless (eq? v jnull))
     (values c v)))
 
+(define (hex2 b)
+  (define s (number->string b 16))
+  (if (< b 16) (string-append "0" s) s))
+
+;; best-effort guess at the content behind a bad magic: tells the
+;; operator whether they picked a file that needs no decryption at all
+(define (content-hint ct)
+  (cond ((and (>= (bytes-length ct) 5)
+              (bytes=? (subbytes ct 0 5) #"%PDF-"))
+         " (this looks like an unencrypted PDF; decryption is not needed)")
+        ((and (>= (bytes-length ct) 4)
+              (bytes=? (subbytes ct 0 4) #"PK\x03\x04"))
+         " (this looks like a plain zip/OOXML container; decryption is not needed)")
+        (else "")))
+
 (define (parse-wrapper ct)
   (unless (>= (bytes-length ct) 8)
     (error 'parse-wrapper "file too short"))
   (unless (bytes=? (subbytes ct 0 4) #"\x62\x14\x23\x65")
-    (error 'parse-wrapper "not an E-SafeNet wrapper (bad magic)"))
+    (error 'parse-wrapper
+           "not an E-SafeNet wrapper (bad magic): file starts with ~a, size ~a bytes~a"
+           (string-join
+            (for/list ((b (in-bytes (subbytes ct 0 8)))) (hex2 b))
+            " ")
+           (bytes-length ct)
+           (content-hint ct)))
   (values (le16 ct 4) (le16 ct 6)))
 
 (define (xor-pad ct pad)
@@ -601,6 +624,25 @@
   (define seen (make-hash))
   (define spans null)
   (define objstms 0)
+  (define objstm-objs null)
+  ;; sanity for a captured span: real top-level objects open with a
+  ;; dict or array, and endobj follows endstream (stream objects) or
+  ;; >> (plain dicts). Binary noise inside large streams matches the
+  ;; "N 0 obj" header pattern often enough to swallow real objects
+  ;; through the seen/spans bookkeeping — these two checks kill that.
+  (define (object-open-sane? start hdr-end)
+    (define after (objstm-skip-ws s hdr-end))
+    (and (< after (bytes-length s))
+         (let ((c (bytes-ref s after)))
+           (or (= c 60) (= c 91)))))
+  (define (object-end-sane? obj-end)
+    (let loop ((i (- obj-end 1)))
+      (cond ((< i 9) #f)
+            ((let ((c (bytes-ref s i))) (or (= c 10) (= c 13) (= c 32)))
+             (loop (- i 1)))
+            (else
+             (or (bytes=? (subbytes s (- i 8) (+ i 1)) #"endstream")
+                 (bytes=? (subbytes s (- i 1) (+ i 1)) #">>"))))))
   (for ((m (in-list matches)))
     (define start (car m))
     ;; a real object header is preceded by whitespace or a document
@@ -613,21 +655,184 @@
       (string->number
        (bytes->string/utf-8
         (subbytes s (car m) (+ (car m) (- (cdr m) (car m) 6))))))
-    (when (and prev-ok num (not (hash-has-key? seen num))
-               (for/and ((sp (in-list spans)))
-                 (or (<= (+ (car sp) (cdr sp)) start)
-                     (>= start (+ (car sp) (cdr sp))))))
+    (when (and prev-ok num (not (hash-has-key? seen num)))
       (define obj-end (bytes-find s #"endobj" (cdr m)))
       (when obj-end
         (define end-abs (min (+ obj-end 6) (bytes-length s)))
-        (set! spans (cons (cons start end-abs) spans))
-        (define obj (subbytes s start end-abs))
-        (cond
-          ((regexp-match? #px#"/Type\\s*/XRef\\b" obj) (void))
-          ((regexp-match? #px#"/Type\\s*/ObjStm\\b" obj)
-           (set! objstms (add1 objstms)))
-          (else (hash-set! seen num obj))))))
-  (values seen objstms))
+        ;; sanity: real top-level objects open with a dict/array and
+        ;; endobj follows endstream or >>. Binary noise inside large
+        ;; streams matches the "N 0 obj" header pattern often enough
+        ;; to swallow real objects through seen/spans — these checks
+        ;; kill that.
+        (when (and (object-open-sane? start (cdr m))
+                   (object-end-sane? obj-end))
+          ;; non-overlap against the spans accepted so far (matches
+          ;; are processed in ascending start order). The old check
+          ;; added start+end together, which silently rejected every
+          ;; object that followed a large one — salvage captured only
+          ;; a handful of objects on real xref-stream documents.
+          (when (for/and ((sp (in-list spans)))
+                  (or (<= (cdr sp) start)
+                      (>= (car sp) end-abs)))
+            (set! spans (cons (cons start end-abs) spans))
+            (define obj (subbytes s start end-abs))
+            (cond
+              ((regexp-match? #px#"/Type\\s*/XRef\\b" obj) (void))
+              ((regexp-match? #px#"/Type\\s*/ObjStm\\b" obj)
+               (set! objstms (add1 objstms))
+               (set! objstm-objs (cons obj objstm-objs)))
+              (else (hash-set! seen num obj))))))))
+  (values seen objstms objstm-objs))
+
+;; ---------- compressed object streams (PDF 1.5 ObjStm) ----------
+
+;; inflate one zlib-format stream (2-byte header + raw deflate +
+;; 4-byte adler32); try with the checksum tail, then without
+(define (inflate-zlib data)
+  (or (with-handlers ([exn:fail? (lambda _ #f)])
+        (and (>= (bytes-length data) 3)
+             (inflate-raw (subbytes data 2) #f #f)))
+      (with-handlers ([exn:fail? (lambda _ #f)])
+        (and (> (bytes-length data) 6)
+             (inflate-raw (subbytes data 2 (- (bytes-length data) 4)) #f #f)))))
+
+;; the stream payload of an object: between the keyword's EOL and
+;; the matching "endstream"
+(define (objstm-stream-data obj)
+  (define sm (bytes-find obj #"stream"))
+  (and sm
+       (let ((len (bytes-length obj)))
+         (define ds
+           (cond ((and (< (+ sm 8) len)
+                       (= (bytes-ref obj (+ sm 6)) 13)
+                       (= (bytes-ref obj (+ sm 7)) 10))
+                  (+ sm 8))
+                 ((< (+ sm 7) len) (+ sm 7))
+                 (else #f)))
+         (and ds
+              (let ((de (bytes-find obj #"endstream" ds)))
+                (and de (subbytes obj ds de)))))))
+
+;; scan one PDF value starting at o, returning the offset just past it
+;; (dicts balance <</>>, arrays balance [], strings are skipped safely)
+(define (objstm-scan-value buf o)
+  (define len (bytes-length buf))
+  (define b (bytes-ref buf o))
+  (cond
+    ((and (= b 60) (< (+ o 1) len) (= (bytes-ref buf (+ o 1)) 60))
+     ;; << dict >>
+     (let loop ((i (+ o 2)))
+       (cond ((>= i len) len)
+             ((and (= (bytes-ref buf i) 62)
+                   (< (+ i 1) len)
+                   (= (bytes-ref buf (+ i 1)) 62))
+              (+ i 2))
+             ((and (= (bytes-ref buf i) 60)
+                   (< (+ i 1) len)
+                   (= (bytes-ref buf (+ i 1)) 60))
+              (loop (objstm-scan-value buf i)))
+             ((= (bytes-ref buf i) 60)
+              (loop (objstm-scan-hex-string buf i)))
+             ((= (bytes-ref buf i) 40)
+              (loop (objstm-scan-paren-string buf i)))
+             (else (loop (+ i 1))))))
+    ((= b 60) (objstm-scan-hex-string buf o))
+    ((= b 40) (objstm-scan-paren-string buf o))
+    ((= b 91)
+     ;; [ array ]
+     (let loop ((i (+ o 1)))
+       (cond ((>= i len) len)
+             ((= (bytes-ref buf i) 93) (+ i 1))
+             ((= (bytes-ref buf i) 40)
+              (loop (objstm-scan-paren-string buf i)))
+             ((= (bytes-ref buf i) 60)
+              (loop (objstm-scan-value buf i)))
+             (else (loop (+ i 1))))))
+    (else
+     ;; scalar: number / name / keyword up to whitespace or delimiter
+     (let loop ((i o))
+       (cond ((>= i len) len)
+             ((let ((c (bytes-ref buf i)))
+                (or (= c 32) (= c 9) (= c 10) (= c 13)
+                    (= c 47) (= c 60) (= c 91) (= c 40)))
+              i)
+             (else (loop (+ i 1))))))))
+
+(define (objstm-scan-hex-string buf o)
+  (define len (bytes-length buf))
+  (let loop ((i (+ o 1)))
+    (cond ((>= i len) len)
+          ((= (bytes-ref buf i) 62) (+ i 1))
+          (else (loop (+ i 1))))))
+
+(define (objstm-scan-paren-string buf o)
+  (define len (bytes-length buf))
+  (let loop ((i (+ o 1)) (depth 1))
+    (cond ((>= i len) len)
+          ((= (bytes-ref buf i) 92) (loop (min len (+ i 2)) depth))
+          ((= (bytes-ref buf i) 40) (loop (+ i 1) (add1 depth)))
+          ((= (bytes-ref buf i) 41)
+           (let ((d (sub1 depth)))
+             (if (zero? d) (+ i 1) (loop (+ i 1) d))))
+          (else (loop (+ i 1) depth)))))
+
+(define (objstm-skip-ws buf o)
+  (define len (bytes-length buf))
+  (let loop ((i o))
+    (if (and (< i len)
+             (let ((c (bytes-ref buf i)))
+               (or (= c 32) (= c 9) (= c 10) (= c 13) (= c 0))))
+        (loop (+ i 1))
+        i)))
+
+;; walk one ObjStm's pair table and bodies, rebuilding each contained
+;; object as standard "num 0 obj ... endobj" text the salvage
+;; assembler can consume; undecodable objects are dropped silently
+(define (extract-objstm obj)
+  (define m-n (regexp-match #px#"/N\\s+([0-9]+)" obj))
+  (define m-f (regexp-match #px#"/First\\s+([0-9]+)" obj))
+  (if (and m-n m-f)
+      (let* ((count (string->number (bytes->string/utf-8 (cadr m-n))))
+             (first-off (string->number (bytes->string/utf-8 (cadr m-f)))))
+        (if (and count first-off)
+            (let ((data (objstm-stream-data obj)))
+              (if data
+                  (let ((body (inflate-zlib data)))
+                    (if body
+                        (objstm-decode body first-off count)
+                        null))
+                  null))
+            null))
+      null))
+
+(define (objstm-decode body first-off count)
+  (define pair-nums
+    (filter-map
+     (lambda (s) (string->number (bytes->string/utf-8 s)))
+     (regexp-match* #px#"[0-9]+" (subbytes body 0 first-off))))
+  ;; pairs alternate objnum gen; keep the objnums (at most `count`)
+  (define nums
+    (let loop ((xs pair-nums) (n 0) (acc null))
+      (cond ((or (null? xs) (null? (cdr xs)) (>= n count))
+             (reverse acc))
+            (else (loop (cddr xs) (add1 n) (cons (car xs) acc))))))
+  (let loop ((o (objstm-skip-ws body first-off))
+             (todo nums)
+             (acc null))
+    (if (null? todo)
+        (reverse acc)
+        (if (>= o (bytes-length body))
+            (reverse acc)
+            (let-values (((nx) (objstm-scan-value body o)))
+              (loop (objstm-skip-ws body nx)
+                    (cdr todo)
+                    (cons (cons (car todo)
+                                (bytes-append
+                                 (string->bytes/utf-8
+                                  (format "~a 0 obj\n" (car todo)))
+                                 (subbytes body o nx)
+                                 #"\nendobj\n"))
+                          acc)))))))
 
 ;; insert /MediaBox into a page object's top-level dict (before the
 ;; last >> of the dict segment) when it relies on inheritance
@@ -653,7 +858,17 @@
 ;; numbers above every salvaged one. /MediaBox is inherited from a
 ;; salvaged /Type/Pages node when the leaves rely on it (A4 otherwise).
 (define (decrypt-pdf-salvage s body-start)
-  (define-values (objs objstms) (salvage-objects s body-start))
+  (define-values (objs objstms objstm-objs) (salvage-objects s body-start))
+  ;; unfold compressed object streams: the page tree of PDF 1.5+
+  ;; documents lives there; independent objects win on number clashes
+  (define objstm-unfolded
+    (for/list ((oe (in-list objstm-objs))) (extract-objstm oe)))
+  (define objstm-extracted
+    (for/sum ((l (in-list objstm-unfolded))) (length l)))
+  (for ((l (in-list objstm-unfolded)))
+    (for ((p (in-list l)))
+      (unless (hash-has-key? objs (car p))
+        (hash-set! objs (car p) (cdr p)))))
   (define nums (sort (hash-keys objs) <))
   (unless (pair? nums)
     (error 'decrypt-pdf "no intact objects survive decryption"))
@@ -664,8 +879,8 @@
       n))
   (unless (pair? pages-src)
     (error 'decrypt-pdf
-           "objects survive but no direct page objects found (~a compressed object stream(s) not supported)"
-           objstms))
+           "objects survive but no direct page objects found (~a compressed object stream(s), ~a object(s) unfolded)"
+           objstms objstm-extracted))
   (define maxnum (apply max nums))
   (define cat-num (add1 maxnum))
   (define pages-num (+ maxnum 2))
@@ -699,20 +914,31 @@
                  pages-num kids (length pages-src))))
   (for ((n (in-list nums)))
     (emit n (hash-ref objs n)))
-  ;; classic xref (ascending object numbers, free entry 0 first)
+  ;; classic xref — a CONTIGUOUS table 0..max object number: gaps get
+  ;; free entries, or high-numbered objects (Root!) fall outside the
+  ;; table and strict readers (qpdf) cannot resolve them
   (define all-num-records
     (sort (hash->list offsets) < #:key car))
+  (define max-recorded
+    (foldl max cat-num (map car all-num-records)))
+  (define table-size (add1 max-recorded))
   (define xref-at pos)
   (emit #f
         (string->bytes/utf-8
          (string-append
-          "xref\r\n0 " (number->string (add1 (length all-num-records))) "\r\n"
+          "xref\r\n0 " (number->string table-size) "\r\n"
           "0000000000 65535 f\r\n"
           (string-join
-           (for/list ((p (in-list all-num-records)))
-             (string-append (zero-pad10 (car p)) " 00000 n\r\n"))
+           (for/list ((k (in-range 1 table-size)))
+             (define p (hash-ref offsets k #f))
+             (if p
+                 ;; record offset = the object's assembled position, not
+                 ;; its number — the number-as-offset bug made every
+                 ;; strict reader reject the rebuilt table
+                 (string-append (zero-pad10 p) " 00000 n\r\n")
+                 "0000000000 65535 f\r\n"))
            "")
-          "trailer\n<< /Size " (number->string (add1 (length all-num-records)))
+          "trailer\n<< /Size " (number->string table-size)
           " /Root " (number->string cat-num) " 0 R >>\nstartxref\n"
           (number->string xref-at) "\n%%EOF\n")))
   (define assembled (apply bytes-append (reverse parts)))
