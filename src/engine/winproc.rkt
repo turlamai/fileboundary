@@ -187,7 +187,8 @@
   (define (finish hProcess timeout-seconds)
     (define wait
       (if timeout-seconds
-          (WaitForSingleObject hProcess (* 1000 timeout-seconds))
+          (WaitForSingleObject
+           hProcess (inexact->exact (floor (* 1000 timeout-seconds))))
           (WaitForSingleObject hProcess #xFFFFFFFF)))
     (define timed-out? (= wait WAIT_TIMEOUT))
     (when timed-out?
