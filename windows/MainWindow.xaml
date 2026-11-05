@@ -117,6 +117,8 @@
                                         <TextBox Grid.Column="0" x:Name="PathBox"
                                                  PlaceholderText="例如 C:\TestData 或 C:\TestData\sample.pdf"
                                                  AutomationProperties.AutomationId="scan-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop"
                                                  KeyDown="PathBox_KeyDown" />
                                         <Button Grid.Column="1" x:Name="BrowseScanButton"
                                                 Content="浏览…" Click="BrowseScan_Click" />
@@ -166,7 +168,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="VerifyOriginalBox"
-                                                 AutomationProperties.AutomationId="verify-original-path" />
+                                                 PlaceholderText="可直接拖入文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="verify-original-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseVerifyOriginalButton"
                                                 Content="浏览…" Click="BrowseVerifyOriginal_Click" />
                                     </Grid>
@@ -177,7 +182,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="VerifyExportBox"
-                                                 AutomationProperties.AutomationId="approved-export-path" />
+                                                 PlaceholderText="可直接拖入文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="approved-export-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseVerifyExportButton"
                                                 Content="浏览…" Click="BrowseVerifyExport_Click" />
                                     </Grid>
@@ -207,7 +215,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="DecryptInputBox"
-                                                 AutomationProperties.AutomationId="decrypt-input-path" />
+                                                 PlaceholderText="可直接拖入文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="decrypt-input-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseDecryptInputButton"
                                                 Content="浏览…" Click="BrowseDecryptInput_Click" />
                                     </Grid>
@@ -218,7 +229,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="DecryptPadBox"
-                                                 AutomationProperties.AutomationId="decrypt-pad-path" />
+                                                 PlaceholderText="可直接拖入密钥文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="decrypt-pad-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseDecryptPadButton"
                                                 Content="浏览…" Click="BrowseDecryptPad_Click" />
                                     </Grid>
@@ -252,7 +266,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="TwinPlainBox"
-                                                 AutomationProperties.AutomationId="twin-plain-path" />
+                                                 PlaceholderText="可直接拖入文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="twin-plain-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseTwinPlainButton"
                                                 Content="浏览…" Click="BrowseTwinPlain_Click" />
                                     </Grid>
@@ -263,7 +280,10 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <TextBox Grid.Column="0" x:Name="TwinCipherBox"
-                                                 AutomationProperties.AutomationId="twin-cipher-path" />
+                                                 PlaceholderText="可直接拖入文件，或点右侧浏览"
+                                                 AutomationProperties.AutomationId="twin-cipher-path"
+                                                 AllowDrop="True" DragOver="FileBox_DragOver"
+                                                 Drop="FileBox_Drop" />
                                         <Button Grid.Column="1" x:Name="BrowseTwinCipherButton"
                                                 Content="浏览…" Click="BrowseTwinCipher_Click" />
                                     </Grid>

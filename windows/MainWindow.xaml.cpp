@@ -206,6 +206,23 @@ void MainWindow::RunUpdateCheckAsync() {
 // resume_foreground in this projection - completion hops via TryEnqueue.
 namespace {
 
+// Auto-generate the decrypt output path from the input path:
+// <dir>\<basename>_decrypted<ext>, same directory as the input.
+void FillDecryptOutput(Microsoft::UI::Xaml::Controls::TextBox const& input_box,
+                       Microsoft::UI::Xaml::Controls::TextBox const& output_box) {
+  auto path = std::wstring{input_box.Text()};
+  auto last_slash = path.find_last_of(L'\\');
+  if (last_slash == std::wstring::npos)
+    last_slash = path.find_last_of(L'/');
+  if (last_slash == std::wstring::npos) return;
+  auto dir = path.substr(0, last_slash + 1);
+  auto name = path.substr(last_slash + 1);
+  auto dot = name.find_last_of(L'.');
+  auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
+  auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
+  output_box.Text(dir + basename + L"_decrypted" + ext);
+}
+
 // Picks an encrypted file and fills both the input and the auto-generated
 // output TextBox: <dir>\<basename>_decrypted.<ext> in the same directory.
 winrt::fire_and_forget PickDecryptInputAndFillOutput(
@@ -220,23 +237,45 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
     auto file = co_await picker.PickSingleFileAsync();
     dq.TryEnqueue([input_box, output_box, file]() mutable {
       if (!file) return;
-      auto path = std::wstring{file.Path()};
-      input_box.Text(path);
-      // auto-generate output: <dir>\<basename>_decrypted<ext>
-      auto last_slash = path.find_last_of(L'\\');
-      if (last_slash == std::wstring::npos)
-        last_slash = path.find_last_of(L'/');
-      if (last_slash == std::wstring::npos) return;
-      auto dir = path.substr(0, last_slash + 1);
-      auto name = path.substr(last_slash + 1);
-      auto dot = name.find_last_of(L'.');
-      auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
-      auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
-      output_box.Text(dir + basename + L"_decrypted" + ext);
+      input_box.Text(std::wstring{file.Path()});
+      FillDecryptOutput(input_box, output_box);
     });
   } catch (...) {
   }
 }
+
+// Drop target shared by every path TextBox: take the first dropped
+// storage item, fill the box, and keep the decrypt output in sync when
+// the dropped-onto box is the encrypted-input one. GetStorageItemsAsync
+// may resume off the UI thread - completion hops via TryEnqueue.
+winrt::fire_and_forget DropFileIntoBox(
+    winrt::Windows::Foundation::IInspectable const& sender,
+    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs args,
+    Microsoft::UI::Dispatching::DispatcherQueue dq,
+    winrt::weak_ref<MainWindow> weak) {
+  try {
+    if (!args.DataView().Contains(
+            winrt::Windows::ApplicationModel::DataTransfer::
+                StandardDataFormats::StorageFile())) {
+      co_return;
+    }
+    auto items = co_await args.DataView().GetStorageItemsAsync();
+    dq.TryEnqueue([sender, items, weak]() mutable {
+      auto window = weak.get();
+      auto box = sender.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+      if (!window || !box || items.Size() == 0) return;
+      box.Text(std::wstring{items.GetAt(0).Path()});
+      if (box == window->DecryptInputBox()) {
+        FillDecryptOutput(window->DecryptInputBox(),
+                          window->DecryptOutputBox());
+      }
+    });
+  } catch (...) {
+    // A cancelled or non-file drop is not an error.
+  }
+}
+
+}  // namespace
 
 winrt::fire_and_forget PickOpenInto(Microsoft::UI::Xaml::Controls::TextBox box,
                                     HWND hwnd,
@@ -335,6 +374,25 @@ void MainWindow::BrowseTwinOutput_Click(
   PickSaveInto(TwinOutputBox(), WindowHandle(), DispatcherQueue(),
                L"fileboundary-key",
                {{L"密钥文件", {L".json"}}});
+}
+
+void MainWindow::FileBox_DragOver(
+    winrt::Windows::Foundation::IInspectable const&,
+    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args) {
+  // Accept file drops only; anything else (text, links) passes through.
+  if (args.DataView().Contains(winrt::Windows::ApplicationModel::DataTransfer::
+                                   StandardDataFormats::StorageFile())) {
+    args.Handled(true);
+    args.AcceptedOperation(
+        winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::
+            Copy);
+  }
+}
+
+void MainWindow::FileBox_Drop(
+    winrt::Windows::Foundation::IInspectable const& sender,
+    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args) {
+  DropFileIntoBox(sender, args, DispatcherQueue(), get_weak());
 }
 
 // ---------------- panel actions ----------------

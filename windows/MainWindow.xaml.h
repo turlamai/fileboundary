@@ -60,6 +60,11 @@ struct MainWindow : MainWindowT<MainWindow> {
                               Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void BrowseTwinOutput_Click(winrt::Windows::Foundation::IInspectable const& sender,
                               Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  // Drag-and-drop a file from Explorer onto any path input box.
+  void FileBox_DragOver(winrt::Windows::Foundation::IInspectable const& sender,
+                        winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args);
+  void FileBox_Drop(winrt::Windows::Foundation::IInspectable const& sender,
+                    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args);
   void CopyResult_Click(winrt::Windows::Foundation::IInspectable const& sender,
                         Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
