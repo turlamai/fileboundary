@@ -247,17 +247,15 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 // Drop target shared by every path TextBox: take the first dropped
 // storage item, fill the box, and keep the decrypt output in sync when
 // the dropped-onto box is the encrypted-input one. GetStorageItemsAsync
-// may resume off the UI thread - completion hops via TryEnqueue.
+// may resume off the UI thread - completion hops via TryEnqueue. Non-file
+// payloads fail the async call and stay silent; this projection has no
+// StandardDataFormats probe to pre-filter them.
 winrt::fire_and_forget DropFileIntoBox(
     winrt::Windows::Foundation::IInspectable const& sender,
     winrt::Microsoft::UI::Xaml::DragEventArgs args,
     Microsoft::UI::Dispatching::DispatcherQueue dq,
     winrt::weak_ref<MainWindow> weak) {
   try {
-    if (!args.DataView().Contains(
-            winrt::Microsoft::UI::Xaml::StandardDataFormats::StorageFile())) {
-      co_return;
-    }
     auto items = co_await args.DataView().GetStorageItemsAsync();
     dq.TryEnqueue([sender, items, weak]() mutable {
       auto window = weak.get();
@@ -378,13 +376,9 @@ void MainWindow::BrowseTwinOutput_Click(
 void MainWindow::FileBox_DragOver(
     winrt::Windows::Foundation::IInspectable const&,
     winrt::Microsoft::UI::Xaml::DragEventArgs const& args) {
-  // Accept file drops only; anything else (text, links) passes through.
-  if (args.DataView().Contains(
-          winrt::Microsoft::UI::Xaml::StandardDataFormats::StorageFile())) {
-    args.Handled(true);
-    args.AcceptedOperation(
-        winrt::Microsoft::UI::Xaml::DataPackageOperation::Copy);
-  }
+  args.Handled(true);
+  args.AcceptedOperation(
+      winrt::Microsoft::UI::Xaml::DataPackageOperation::Copy);
 }
 
 void MainWindow::FileBox_Drop(
