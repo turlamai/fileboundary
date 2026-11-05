@@ -250,13 +250,12 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 // may resume off the UI thread - completion hops via TryEnqueue.
 winrt::fire_and_forget DropFileIntoBox(
     winrt::Windows::Foundation::IInspectable const& sender,
-    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs args,
+    winrt::Microsoft::UI::Xaml::DragEventArgs args,
     Microsoft::UI::Dispatching::DispatcherQueue dq,
     winrt::weak_ref<MainWindow> weak) {
   try {
     if (!args.DataView().Contains(
-            winrt::Windows::ApplicationModel::DataTransfer::
-                StandardDataFormats::StorageFile())) {
+            winrt::Microsoft::UI::Xaml::StandardDataFormats::StorageFile())) {
       co_return;
     }
     auto items = co_await args.DataView().GetStorageItemsAsync();
@@ -378,20 +377,19 @@ void MainWindow::BrowseTwinOutput_Click(
 
 void MainWindow::FileBox_DragOver(
     winrt::Windows::Foundation::IInspectable const&,
-    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args) {
+    winrt::Microsoft::UI::Xaml::DragEventArgs const& args) {
   // Accept file drops only; anything else (text, links) passes through.
-  if (args.DataView().Contains(winrt::Windows::ApplicationModel::DataTransfer::
-                                   StandardDataFormats::StorageFile())) {
+  if (args.DataView().Contains(
+          winrt::Microsoft::UI::Xaml::StandardDataFormats::StorageFile())) {
     args.Handled(true);
     args.AcceptedOperation(
-        winrt::Windows::ApplicationModel::DataTransfer::DataPackageOperation::
-            Copy);
+        winrt::Microsoft::UI::Xaml::DataPackageOperation::Copy);
   }
 }
 
 void MainWindow::FileBox_Drop(
     winrt::Windows::Foundation::IInspectable const& sender,
-    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args) {
+    winrt::Microsoft::UI::Xaml::DragEventArgs const& args) {
   DropFileIntoBox(sender, args, DispatcherQueue(), get_weak());
 }
 

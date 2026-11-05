@@ -61,10 +61,11 @@ struct MainWindow : MainWindowT<MainWindow> {
   void BrowseTwinOutput_Click(winrt::Windows::Foundation::IInspectable const& sender,
                               Microsoft::UI::Xaml::RoutedEventArgs const& args);
   // Drag-and-drop a file from Explorer onto any path input box.
+  // WinUI 3 keeps DragEventArgs/DataPackage types in Microsoft::UI::Xaml.
   void FileBox_DragOver(winrt::Windows::Foundation::IInspectable const& sender,
-                        winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args);
+                        winrt::Microsoft::UI::Xaml::DragEventArgs const& args);
   void FileBox_Drop(winrt::Windows::Foundation::IInspectable const& sender,
-                    winrt::Windows::ApplicationModel::DataTransfer::DragEventArgs const& args);
+                    winrt::Microsoft::UI::Xaml::DragEventArgs const& args);
   void CopyResult_Click(winrt::Windows::Foundation::IInspectable const& sender,
                         Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
