@@ -296,7 +296,7 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  -------- update check panel --------  -->
+                        <!--  update check panel  -->
                         <Grid x:Name="PanelUpdate" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
