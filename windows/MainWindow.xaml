@@ -222,18 +222,10 @@
                                         <Button Grid.Column="1" x:Name="BrowseDecryptPadButton"
                                                 Content="浏览…" Click="BrowseDecryptPad_Click" />
                                     </Grid>
-                                    <TextBlock Text="解密输出到" Margin="0,6,0,0" />
-                                    <Grid ColumnSpacing="8">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBox Grid.Column="0" x:Name="DecryptOutputBox"
-                                                 PlaceholderText="例如 D:\Recovered\output.docx"
-                                                 AutomationProperties.AutomationId="decrypt-output-path" />
-                                        <Button Grid.Column="1" x:Name="BrowseDecryptOutputButton"
-                                                Content="选择位置…" Click="BrowseDecryptOutput_Click" />
-                                    </Grid>
+                                    <TextBlock Text="解密输出到（自动生成）" Margin="0,6,0,0" />
+                                    <TextBox x:Name="DecryptOutputBox"
+                                             IsReadOnly="True"
+                                             AutomationProperties.AutomationId="decrypt-output-path" />
                                     <Button x:Name="DecryptButton" Content="开始解密"
                                             Style="{ThemeResource AccentButtonStyle}"
                                             HorizontalAlignment="Left" Margin="0,4,0,0"
