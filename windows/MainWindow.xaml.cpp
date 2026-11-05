@@ -163,6 +163,42 @@ void MainWindow::ShowPanel(std::wstring const& tag) {
                                               : Microsoft::UI::Xaml::Visibility::Collapsed);
   PanelTwin().Visibility(tag == L"twin" ? Microsoft::UI::Xaml::Visibility::Visible
                                         : Microsoft::UI::Xaml::Visibility::Collapsed);
+  PanelUpdate().Visibility(tag == L"update" ? Microsoft::UI::Xaml::Visibility::Visible
+                                            : Microsoft::UI::Xaml::Visibility::Collapsed);
+}
+
+void MainWindow::RunUpdateCheckAsync() {
+  auto backend = backend_;
+  if (!backend || !backend->running()) {
+    SetErrorUi("Racket backend not running");
+    return;
+  }
+  SetBusyUi(true);
+  auto const dispatcher = DispatcherQueue();
+  auto const weak = get_weak();
+  try {
+    rivet_app::API api(*backend);
+    (void)api.update_check_summary_async("",
+        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
+          try {
+            auto message = result.get();
+            dispatcher.TryEnqueue([weak, message = std::move(message)] {
+              if (auto window = weak.get()) window->ShowTextResult(
+                    L"检查更新完成",
+                    winrt::to_hstring(message),
+                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational,
+                    L"检查完成。");
+            });
+          } catch (std::exception const& e) {
+            auto error = std::string(e.what());
+            dispatcher.TryEnqueue([weak, error = std::move(error)] {
+              if (auto window = weak.get()) window->SetErrorUi(error);
+            });
+          }
+        });
+  } catch (std::exception const& e) {
+    SetErrorUi(e.what());
+  }
 }
 
 // ---------------- file pickers ----------------
@@ -308,6 +344,12 @@ void MainWindow::Twin_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
   RunTwinAsync();
+}
+
+void MainWindow::UpdateCheck_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  RunUpdateCheckAsync();
 }
 
 void MainWindow::PathBox_KeyDown(

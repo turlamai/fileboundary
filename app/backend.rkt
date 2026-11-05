@@ -4,8 +4,11 @@
          json
          racket/list
          racket/path
+         racket/string
          (prefix-in domain: "../src/engine/summary.rkt")
-         (prefix-in dec: "../src/engine/decrypt.rkt"))
+         (prefix-in dec: "../src/engine/decrypt.rkt")
+         (prefix-in upd: "../src/engine/update.rkt")
+         "../src/version.rkt")
 
 (provide start)
 
@@ -65,6 +68,29 @@
          'complete (null? missing)
          'output (path->string
                   (file-name-from-path (simple-form-path output))))))
+
+;; update check: the GUI delegates to the same engine entry as
+;; `racket src/cli.rkt update check` (ADR-0008 channel). The manifest
+;; URL is the default release channel unless the caller supplies one.
+;; Returns current version, latest version, and whether an update is
+;; available — enough for the UI to inform the operator without any
+;; push mechanism (every network access is explicit and operator-
+;; initiated per ADR-0008).
+(define default-channel-url
+  "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
+
+(define-rpc (update-check-summary [manifest : String] : String)
+  (define source
+    (if (string=? (string-trim manifest) "")
+        default-channel-url
+        (string-trim manifest)))
+  (define m (upd:fetch-manifest source))
+  (define result (upd:check-update m product-version))
+  (jsexpr->string
+   (hash 'updateAvailable (hash-ref result 'updateAvailable #f)
+         'currentVersion product-version
+         'latestVersion (hash-ref result 'latestVersion "")
+         'action (hash-ref result 'action ""))))
 
 (define (start in-fd out-fd)
   (serve-fds in-fd out-fd))

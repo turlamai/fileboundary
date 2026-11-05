@@ -75,6 +75,16 @@
                         <TextBlock Text="Recover Key" FontSize="11" Opacity="0.6" />
                     </StackPanel>
                 </NavigationViewItem>
+                <NavigationViewItem Tag="update"
+                                    AutomationProperties.AutomationId="nav-update">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE895;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="检查更新" />
+                        <TextBlock Text="Updates" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.Content>
@@ -282,6 +292,25 @@
                                             HorizontalAlignment="Left" Margin="0,4,0,0"
                                             IsEnabled="False" Click="Twin_Click"
                                             AutomationProperties.AutomationId="pad-twin-button" />
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!--  -------- update check panel --------  -->
+                        <Grid x:Name="PanelUpdate" Visibility="Collapsed">
+                            <ScrollViewer Padding="36,20,36,12">
+                                <StackPanel MaxWidth="680" Spacing="14"
+                                            HorizontalAlignment="Left">
+                                    <TextBlock Text="检查更新" FontSize="24"
+                                               FontWeight="SemiBold" />
+                                    <TextBlock TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="检查 GitHub Releases 上是否有新版本。仅在你点击按钮时访问网络，不会自动更新或上传任何数据。" />
+                                    <Button x:Name="UpdateCheckButton" Content="检查更新"
+                                            Style="{ThemeResource AccentButtonStyle}"
+                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                            IsEnabled="False" Click="UpdateCheck_Click"
+                                            AutomationProperties.AutomationId="update-check-button" />
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
