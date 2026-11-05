@@ -31,6 +31,8 @@ struct MainWindow : MainWindowT<MainWindow> {
                      Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void Twin_Click(winrt::Windows::Foundation::IInspectable const& sender,
                   Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  void UpdateCheck_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                         Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
   // Navigation + file pickers + result copy.
   void Nav_SelectionChanged(
@@ -71,6 +73,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunVerifyAsync();
   void RunDecryptAsync();
   void RunTwinAsync();
+  void RunUpdateCheckAsync();
   void SetBusyUi(bool busy);
   void ShowPanel(std::wstring const& tag);
   void ShowTextResult(std::wstring const& title, winrt::hstring const& body,

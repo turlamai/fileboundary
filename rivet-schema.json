@@ -93,6 +93,22 @@
     {
       "arguments": [
         {
+          "name": "manifest",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "name": "update-check-summary",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "arguments": [
+        {
           "name": "original",
           "type": {
             "kind": "scalar",
