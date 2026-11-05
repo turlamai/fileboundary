@@ -224,7 +224,7 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
     auto file = co_await picker.PickSingleFileAsync();
     dq.TryEnqueue([input_box, output_box, file]() mutable {
       if (!file) return;
-      auto path = file.Path();
+      auto path = std::wstring{file.Path()};
       input_box.Text(path);
       // auto-generate output: <dir>\<basename>_decrypted<ext>
       auto last_slash = path.find_last_of(L'\\');
