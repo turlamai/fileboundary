@@ -51,8 +51,6 @@ struct MainWindow : MainWindowT<MainWindow> {
   void BrowseDecryptInput_Click(
       winrt::Windows::Foundation::IInspectable const& sender,
       Microsoft::UI::Xaml::RoutedEventArgs const& args);
-      winrt::Windows::Foundation::IInspectable const& sender,
-      Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void BrowseTwinPlain_Click(winrt::Windows::Foundation::IInspectable const& sender,
                              Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void BrowseTwinCipher_Click(winrt::Windows::Foundation::IInspectable const& sender,
