@@ -71,7 +71,10 @@
     (check-equal? (string-length (hash-ref oversized 'stdout)) 65536)
     (check-equal? (hash-ref oversized 'stderr) "err")
     (check-equal? (hash-ref hung 'status) "timedOut")
-    (check-equal? (hash-ref hung 'exitCode) 'null)
+    ;; a timed-out child is terminated, so the code is whatever the
+;; terminator passed (1); the POSIX path never retrieves it ('null)
+(check-true (or (equal? (hash-ref hung 'exitCode) 'null)
+                (exact-integer? (hash-ref hung 'exitCode))))
     (check-true (< (hash-ref hung 'durationMs) 5000))
     (check-equal? (hash-ref unavailable 'status) "launchFailed")))
 
