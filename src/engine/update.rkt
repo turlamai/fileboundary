@@ -25,6 +25,8 @@
          check-update
          sha256-file
          fetch-manifest
+         run-child*/exit-code
+         windows-quote-arg
          download-or-copy!
          download-file!
          pick-package
@@ -338,12 +340,137 @@
       (and (file-exists? "C:/Windows/System32/curl.exe")
            (string->path "C:/Windows/System32/curl.exe"))))
 
+;; Windows GUI hosts have no console: launching the console-subsystem
+;; curl.exe via system* makes the OS allocate one, and a black window
+;; flashes over the app (v0.6.4 fixed the host exe itself, not its
+;; children). The `winproc` submodule below encapsulates the fix —
+;; CreateProcessW + CREATE_NO_WINDOW — and only instantiates on
+;; Windows. Console processes (the CLI) keep the plain system* path so
+;; curl's stderr stays attached to the caller's console.
+;; MSVCRT argv quoting: quote when empty / whitespace / a quote is
+;; present; double backslashes that precede a quote or the end of a
+;; quoted argument, so the trailing run survives the closing quote.
+;; Pure string logic (no FFI) so it is testable on every platform.
+(define (windows-quote-arg a)
+  (define n (string-length a))
+  (cond [(zero? n) "\"\""]
+        [(and (not (string-contains? a " "))
+              (not (string-contains? a "\t"))
+              (not (string-contains? a "\"")))
+         a]
+        [else
+         (define out (open-output-string))
+         (display #\" out)
+         (let loop ([bs 0] [i 0])
+           (cond [(= i n)
+                  (for ([_ (in-range (* 2 bs))]) (display #\\ out))
+                  (display #\" out)]
+                 [else
+                  (define c (string-ref a i))
+                  (cond [(char=? c #\\) (loop (+ bs 1) (+ i 1))]
+                        [(char=? c #\")
+                         (for ([_ (in-range (+ (* 2 bs) 1))]) (display #\\ out))
+                         (display #\" out)
+                         (loop 0 (+ i 1))]
+                        [else
+                         (for ([_ bs]) (display #\\ out))
+                         (display c out)
+                         (loop 0 (+ i 1))])]))
+         (get-output-string out)]))
+
+(module winproc racket/base
+  (require ffi/unsafe
+           ffi/unsafe/define
+           racket/format
+           racket/string)
+
+  (provide run-hidden*/exit-code has-console?)
+
+  (define CREATE_NO_WINDOW #x08000000)
+
+  (define-ffi-definer define-kernel32 (ffi-lib "kernel32"))
+
+  (define-kernel32 GetConsoleWindow (_fun -> _pointer))
+
+  (define (has-console?)
+    (not (ptr-equal? (GetConsoleWindow) #f)))
+
+  (define-kernel32 CreateProcessW
+    (_fun _string/utf-16 ; lpApplicationName (unquoted, exact path)
+          _string/utf-16 ; lpCommandLine
+          _pointer ; lpProcessAttributes
+          _pointer ; lpThreadAttributes
+          (_bool = #f) ; bInheritHandles
+          (_uint32 = CREATE_NO_WINDOW)
+          _pointer ; lpEnvironment
+          _pointer ; lpCurrentDirectory
+          (si : _bytes) ; STARTUPINFOW, zeroed except cb
+          (pi : (_ptr o (_list-struct _pointer _pointer _uint32 _uint32)))
+          -> (ok : _bool)
+          -> (values ok pi)))
+
+  (define-kernel32 WaitForSingleObject
+    (_fun _pointer (_uint32 = #xFFFFFFFF) -> _uint32)) ; INFINITE
+
+  (define-kernel32 GetExitCodeProcess
+    (_fun _pointer (code : (_ptr o _uint32)) -> (ok : _bool)
+          -> (if ok code (error 'run-hidden "GetExitCodeProcess failed"))))
+
+  (define-kernel32 CloseHandle
+    (_fun _pointer -> _void))
+
+  ;; STARTUPINFOW, x64: cb 4 + pad + 3 ptrs + 8 DWORDs + 2 WORDs + pad
+  ;; + 3 handles = 88 bytes; CreateProcessW only touches cb up front.
+  (define STARTUPINFOW-SIZE 88)
+
+  ;; exe-str: exact path (lpApplicationName, unquoted); cmdline: full
+  ;; pre-quoted MSVCRT command line (parent module owns the argv rules).
+  (define (run-hidden*/exit-code exe-str cmdline)
+    (define si (make-bytes STARTUPINFOW-SIZE))
+    (integer->integer-bytes STARTUPINFOW-SIZE 4 #f #t si 0)
+    (define-values (ok pi)
+      (CreateProcessW exe-str cmdline #f #f #f #f si))
+    (unless ok (error 'run-hidden "CreateProcessW failed: ~a" cmdline))
+    (define hProcess (list-ref pi 0))
+    (define hThread (list-ref pi 1))
+    (define wait (WaitForSingleObject hProcess))
+    (CloseHandle hThread)
+    (define code (GetExitCodeProcess hProcess))
+    (CloseHandle hProcess)
+    (unless (= wait 0) ; WAIT_OBJECT_0
+      (error 'run-hidden "WaitForSingleObject failed (~a): ~a" wait cmdline))
+    code))
+
+;; Children on any OS except a Windows GUI host: plain system*. The
+;; submodule is only local-required in the Windows GUI case, so the
+;; kernel32 FFI never loads elsewhere (local-require instantiates
+;; lazily, at first call). The parent owns argv semantics: it quotes
+;; the command line, the submodule runs the raw CreateProcessW call.
+(define (run-child*/exit-code exe args)
+  (case (system-type)
+    [(windows)
+     (let ()
+       (local-require (only-in (submod "." winproc)
+                               run-hidden*/exit-code
+                               has-console?))
+       (if (has-console?)
+           (apply system*/exit-code exe args)
+           (run-hidden*/exit-code
+            (path->string (path->complete-path exe))
+            (string-join
+             (cons (windows-quote-arg
+                    (path->string (path->complete-path exe)))
+                   (for/list ([a (in-list args)])
+                     (windows-quote-arg (if (path? a) (path->string a) a))))
+             " "))))]
+    [else (apply system*/exit-code exe args)]))
+
 (define (http-fetch-to-file! url dest headers)
   (define args
     (append (list "-sSL" "--fail" "-o" dest)
             (append* (for/list ([h (in-list headers)]) (list "-H" h)))
             (list url)))
-  (define code (apply system*/exit-code (curl-bin) args))
+  (define code (run-child*/exit-code (curl-bin) args))
   (unless (zero? code)
     (error 'http-fetch "download failed (curl exit ~a): ~a" code url))
   dest)

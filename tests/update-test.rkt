@@ -247,3 +247,17 @@
 (define d2-data (hash-ref d2 'data))
 (check-equal? (hash-ref d2-data 'updateAvailable) #t)
 (check-equal? (hash-ref d2-data 'latestVersion) next-version)
+
+;; ---------- MSVCRT argv quoting (CreateProcessW path) ----------
+
+(check-equal? (windows-quote-arg "") "\"\"")
+(check-equal? (windows-quote-arg "plain.exe") "plain.exe")
+(check-equal? (windows-quote-arg "C:/Users/foo bar/out.txt")
+              "\"C:/Users/foo bar/out.txt\"")
+;; embedded quote is escaped, and backslashes before it double
+(check-equal? (windows-quote-arg "a\"b") "\"a\\\"b\"")
+;; bare arguments (no whitespace/quote) pass through unquoted: a
+;; trailing backslash only needs doubling INSIDE a quoted argument
+(check-equal? (windows-quote-arg "C:/dir/") "C:/dir/")
+(check-equal? (windows-quote-arg "C:/dir\\") "C:/dir\\")
+(check-equal? (windows-quote-arg "C:/dir\\ ") "\"C:/dir\\\\ \"")
