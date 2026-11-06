@@ -69,6 +69,11 @@ struct MainWindow : MainWindowT<MainWindow> {
   void CopyResult_Click(winrt::Windows::Foundation::IInspectable const& sender,
                         Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
+  // Result card writer, callable from the free drop-handler functions.
+  void ShowTextResult(std::wstring const& title, winrt::hstring const& body,
+                      Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
+                      std::wstring const& status_message);
+
  private:
   winrt::fire_and_forget InitializeBackendAsync();
   void RunScanAsync();
@@ -79,9 +84,6 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunUpdateCheckAsync();
   void SetBusyUi(bool busy);
   void ShowPanel(std::wstring const& tag);
-  void ShowTextResult(std::wstring const& title, winrt::hstring const& body,
-                      Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
-                      std::wstring const& status_message);
   void ShowDecryptResult(std::string const& json);
   void ShowUpdateCheckResult(std::string const& json);
   void ShowTwinResult(std::string const& json);
