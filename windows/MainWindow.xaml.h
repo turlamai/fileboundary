@@ -91,6 +91,8 @@ struct MainWindow : MainWindowT<MainWindow> {
 
   std::shared_ptr<rivet::windows::Backend> backend_;
   winrt::hstring last_result_text_;
+  // Elevation blocks Explorer drag-drop (UIPI); surfaced in SetReadyUi.
+  bool running_elevated_ = false;
 };
 
 }  // namespace winrt::RivetHost::implementation

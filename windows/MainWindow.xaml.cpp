@@ -33,6 +33,23 @@ std::filesystem::path executable_path() {
   return std::filesystem::path(buffer);
 }
 
+// An elevated process cannot receive Explorer drag-drop (UIPI): the
+// cursor shows the blocked badge and the drop never fires. Detect it
+// so the UI can say WHY dragging is dead instead of staying silent.
+bool IsRunningElevated() {
+  BOOL isAdmin = FALSE;
+  PSID group = nullptr;
+  SID_IDENTIFIER_AUTHORITY authority = SECURITY_NT_AUTHORITY;
+  if (::AllocateAndInitializeSid(&authority, 2,
+                                 SECURITY_BUILTIN_DOMAIN_RID,
+                                 DOMAIN_ALIAS_RID_ADMINS, 0, 0, 0, 0, 0, 0,
+                                 &group)) {
+    ::CheckTokenMembership(nullptr, group, &isAdmin);
+    ::FreeSid(group);
+  }
+  return isAdmin != FALSE;
+}
+
 std::string utf8(std::filesystem::path const& path) {
   auto const wide = path.wstring();
   if (wide.empty()) {
@@ -76,6 +93,7 @@ rivet::windows::RacketRuntimeConfig runtime_config() {
 MainWindow::MainWindow() {
   InitializeComponent();
   Title(L"FileBoundary");
+  running_elevated_ = IsRunningElevated();
   // Drag-and-drop on path boxes: register with handledEventsToo=true.
   // TextBox's internal text-drag class handler runs first and marks
   // DragOver/Drop handled, which silently suppresses the XAML-wired
@@ -287,7 +305,19 @@ winrt::fire_and_forget DropFileIntoBox(
       }
     });
   } catch (...) {
-    // A cancelled or non-file drop is not an error.
+    // A cancelled drop is not an error, but a failing read is: make it
+    // visible instead of leaving the user with a no-reaction drop.
+    dq.TryEnqueue([weak]() mutable {
+      if (auto window = weak.get()) {
+        window->ShowTextResult(
+            L"拖入失败",
+            winrt::hstring(
+                L"文件内容无法读取。请确认拖入的是本地文件（而非压缩包内的"
+                L"文件或网络位置），或用「浏览…」按钮选择。"),
+            Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning,
+            L"拖入的文件无法读取。");
+      }
+    });
   }
 }
 
@@ -868,6 +898,18 @@ void MainWindow::ShowFailed(std::string const& what) {
 
 void MainWindow::SetReadyUi() {
   SetBusyUi(false);
+  // An idle app stays quiet - except for the one actionable warning:
+  // an elevated window cannot receive Explorer drag-drop (UIPI), and
+  // a silent no-reaction drop is exactly the confusion this explains.
+  if (running_elevated_) {
+    StatusBar().Severity(
+        Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning);
+    StatusBar().Message(
+        L"当前以管理员身份运行：Windows 禁止向管理员窗口拖入文件，"
+        L"请用「浏览…」按钮选择文件，或以普通方式重新打开本程序后再拖拽。");
+    StatusBar().IsOpen(true);
+    return;
+  }
   StatusBar().IsOpen(false);  // an idle app stays quiet
 }
 
