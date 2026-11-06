@@ -76,6 +76,25 @@ rivet::windows::RacketRuntimeConfig runtime_config() {
 MainWindow::MainWindow() {
   InitializeComponent();
   Title(L"FileBoundary");
+  // Drag-and-drop on path boxes: register with handledEventsToo=true.
+  // TextBox's internal text-drag class handler runs first and marks
+  // DragOver/Drop handled, which silently suppresses the XAML-wired
+  // handlers - the boxes then reject file drops with no reaction.
+  for (auto const& box :
+       {PathBox(), VerifyOriginalBox(), VerifyExportBox(),
+        DecryptInputBox(), DecryptPadBox(), TwinPlainBox(),
+        TwinCipherBox()}) {
+    box.AddHandler(
+        winrt::Microsoft::UI::Xaml::UIElement::DragOverEvent(),
+        winrt::Microsoft::UI::Xaml::DragEventHandler(
+            this, &MainWindow::FileBox_DragOver),
+        true);
+    box.AddHandler(
+        winrt::Microsoft::UI::Xaml::UIElement::DropEvent(),
+        winrt::Microsoft::UI::Xaml::DragEventHandler(
+            this, &MainWindow::FileBox_Drop),
+        true);
+  }
   // Comfortable default; the layout is fluid and scrolls on smaller sizes.
   AppWindow().ResizeClient(winrt::Windows::Graphics::SizeInt32{980, 660});
   // WinUI shows a generic placeholder in the title bar unless the

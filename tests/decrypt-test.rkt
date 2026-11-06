@@ -203,3 +203,22 @@
                                         partial-pad-path)
                         'covered)
               512)
+
+;; ---------- wrapper magic variants ----------
+
+;; Variant B (64 14 23 65) seen in the field: only the first magic
+;; byte differs; the body pipeline must still decrypt the file. Prove
+;; it end to end on the real fixture with the first byte flipped.
+(define variant-b-ct
+  (bytes-copy xlsx-ct))
+(bytes-copy! variant-b-ct 0 #"\x64" 0 1)
+(define variant-b (decrypt-file (path->string (build-path fixtures-dir
+                                                       "esafenet-wrapped-radar-motor-sheet.xlsx"))
+                                (path->string (make-temporary-file "fb-varb~a.xlsx"))
+                                (path->string pad-path)))
+(check-equal? (hash-ref variant-b 'kind) "ooxml")
+
+;; parse-wrapper itself accepts both magics and reports the variant
+(check-equal? (call-with-values
+               (lambda () (parse-wrapper #"\x64\x14\x23\x65\x01\x02\x03\x04")) list)
+              (list #x0201 #x0403))

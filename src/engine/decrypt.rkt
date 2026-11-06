@@ -152,14 +152,24 @@
          " (this looks like a plain zip/OOXML container; decryption is not needed)")
         (else "")))
 
+;; Known wrapper magics. `62 14 23 65` is the measured family A
+;; (bytes 4-5 = pre-body zone, 6-7 = zone tail, zone+tail = 512).
+;; `64 14 23 65` is variant B, seen in the field (2026-11-06): bytes
+;; 4-7 read as a plausible unix timestamp instead, so the header
+;; layout differs — but the family signature (bytes 1-3) is intact
+;; and the body encryption is expected to follow the same policy pad.
+;; parse-wrapper accepts both and lets the body pipeline validate.
+(define wrapper-magics
+  (list #"\x62\x14\x23\x65" #"\x64\x14\x23\x65"))
+
 (define (parse-wrapper ct)
   (unless (>= (bytes-length ct) 8)
     (error 'parse-wrapper "file too short"))
-  (unless (bytes=? (subbytes ct 0 4) #"\x62\x14\x23\x65")
+  (unless (member (subbytes ct 0 4) wrapper-magics)
     (error 'parse-wrapper
            "not an E-SafeNet wrapper (bad magic): file starts with ~a, size ~a bytes~a"
            (string-join
-            (for/list ((b (in-bytes (subbytes ct 0 8)))) (hex2 b))
+            (for/list ((b (in-bytes (subbytes ct 0 16)))) (hex2 b))
             " ")
            (bytes-length ct)
            (content-hint ct)))
