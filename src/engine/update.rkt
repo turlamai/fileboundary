@@ -24,6 +24,7 @@
          version<? version=? version->string
          parse-manifest
          check-update
+         check-update->summary
          sha256-file
          fetch-manifest
          run-child*/exit-code
@@ -138,6 +139,16 @@
       (hash 'action "none"
             'currentVersion current-version
             'latestVersion latest)))
+
+;; GUI-facing summary of a check-update result. Lives here rather than
+;; in the backend shim so the action->updateAvailable mapping is unit
+;; testable: that mapping once read a nonexistent 'updateAvailable key
+;; and the GUI reported "up to date" forever.
+(define (check-update->summary result)
+  (hash 'updateAvailable (equal? (hash-ref result 'action "") "update")
+        'currentVersion (hash-ref result 'currentVersion "")
+        'latestVersion (hash-ref result 'latestVersion "")
+        'action (hash-ref result 'action "")))
 
 ;; ---------- apply ----------
 

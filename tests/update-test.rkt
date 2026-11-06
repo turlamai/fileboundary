@@ -80,6 +80,19 @@
 (check-equal? (hash-ref check-result 'latestVersion) next-version)
 (check-equal? (hash-ref (check-update valid-manifest next-version) 'action) "none")
 
+;; the GUI summary mapping: updateAvailable must follow the action.
+;; It once read a nonexistent 'updateAvailable key from the raw result
+;; and the GUI reported "already up to date" forever.
+(define summary-update (check-update->summary check-result))
+(check-equal? (hash-ref summary-update 'updateAvailable) #t)
+(check-equal? (hash-ref summary-update 'latestVersion) next-version)
+(check-equal? (hash-ref summary-update 'currentVersion) "0.1.0")
+(check-equal? (hash-ref summary-update 'action) "update")
+(define summary-none
+  (check-update->summary (check-update valid-manifest next-version)))
+(check-equal? (hash-ref summary-none 'updateAvailable) #f)
+(check-equal? (hash-ref summary-none 'action) "none")
+
 ;; ---------- package builders ----------
 
 ;; write a file tree from an assoc of rel-path (forward slashes) -> bytes

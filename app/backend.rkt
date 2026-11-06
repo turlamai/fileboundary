@@ -85,12 +85,9 @@
         default-channel-url
         (string-trim manifest)))
   (define m (upd:fetch-manifest source))
-  (define result (upd:check-update m product-version))
   (jsexpr->string
-   (hash 'updateAvailable (hash-ref result 'updateAvailable #f)
-         'currentVersion product-version
-         'latestVersion (hash-ref result 'latestVersion "")
-         'action (hash-ref result 'action ""))))
+   (upd:check-update->summary
+    (upd:check-update m product-version))))
 
 (define (start in-fd out-fd)
   (serve-fds in-fd out-fd))
