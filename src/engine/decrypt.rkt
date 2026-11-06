@@ -57,8 +57,13 @@
 (define re-cd (byte-regexp #"PK\x01\x02"))
 (define re-lfh (byte-regexp #"PK\x03\x04"))
 (define re-rec-num #px#"^[0-9]{1,6} 0 obj")
-(define re-page (byte-regexp #"/Type\x5cs*/Page(?![s])"))
-(define re-pages (byte-regexp #"/Type\x5cs*/Pages"))
+;; page / page-tree detection MUST accept the spaced canonical dict
+;; form ("/Type /Page") as well as the unspaced one. A plain
+;; byte-regexp gives \s no whitespace meaning (it degrades to a
+;; literal "s" — the field failure behind "no direct page objects
+;; found" on spaced producers), so these must stay pregexp patterns.
+(define re-page (byte-pregexp #"/Type\\s*/Page(?![s])"))
+(define re-pages (byte-pregexp #"/Type\\s*/Pages"))
 
 ;; 'xref\r\n0 <count>\r\n' located by scanning 'xref' anchors and
 ;; hand-checking the header bytes (control bytes stay out of regex
@@ -844,6 +849,55 @@
                                  #"\nendobj\n"))
                           acc)))))))
 
+;; object numbers named by a /Kids[ ... ] array ("n 0 R" refs, deduped)
+(define (kids-references obj)
+  (define m (regexp-match #px#"/Kids\\s*\\[([^\\]]*)\\]" obj))
+  (and m
+       (remove-duplicates
+        (for/list ((r (in-list (regexp-match* #px#"[0-9]+\\s+0\\s+R"
+                                              (cadr m)))))
+          (string->number
+           (bytes->string/utf-8
+            (car (regexp-match #px#"[0-9]+" r))))))))
+
+;; compact number list for bounded diagnostics: first 8, then a count
+;; tail — a truncated 1000-page tree must not flood the error channel
+(define (number-run xs)
+  (if (<= (length xs) 8)
+      (string-join (map number->string xs) ", ")
+      (string-append
+       (string-join (map number->string (take xs 8)) ", ")
+       " ... +" (number->string (- (length xs) 8)))))
+
+;; walk a salvaged pages tree breadth-first from its /Type/Pages roots:
+;; page-like kids become leaves, further /Pages nodes are followed, and
+;; every referenced number with no usable captured object is catalogued
+;; as missing (absent from the body) or damaged (present but carrying
+;; no page marker — its /Type/Pages-shaped bytes did not survive).
+;; Bounded rounds against self-referencing hostile trees.
+(define (resolve-tree-leaves objs roots)
+  (let walk ((frontier (remove-duplicates roots)) (round 0)
+             (leaves (make-hash)) (missing (make-hash))
+             (damaged (make-hash)))
+    (if (or (null? frontier) (> round 8))
+        (values (sort (hash-keys leaves) <)
+                (sort (hash-keys missing) <)
+                (sort (hash-keys damaged) <))
+        (let ((kids null))
+          (for ((k (in-list frontier)))
+            (define o (hash-ref objs k #f))
+            (cond
+              ((not o) (hash-set! missing k #t))
+              ((regexp-match? re-pages o)
+               (set! kids (append kids (kids-references o))))
+              ((or (regexp-match? re-page o)
+                   (regexp-match? #px#"/Contents\\b" o)
+                   (regexp-match? #px#"/Parent\\b" o))
+               (hash-set! leaves k #t))
+              (else (hash-set! damaged k #t))))
+          (walk (remove-duplicates kids) (add1 round)
+                leaves missing damaged)))))
+
 ;; insert /MediaBox into a page object's top-level dict (before the
 ;; last >> of the dict segment) when it relies on inheritance
 (define (inject-mediabox obj box-bytes)
@@ -882,15 +936,39 @@
   (define nums (sort (hash-keys objs) <))
   (unless (pair? nums)
     (error 'decrypt-pdf "no intact objects survive decryption"))
+  ;; direct leaf sniff first; when it finds nothing, follow the
+  ;; salvaged /Type/Pages tree — /Kids names the leaves explicitly, so
+  ;; leaves whose /Type bytes sat in the overwritten head zone (or
+  ;; whose spans a binary-noise match swallowed) still resolve, and
+  ;; kids absent from the body are hard evidence of truncation
   (define pages-src
-    (for/list ((n (in-list nums))
-               #:when (regexp-match? re-page (hash-ref objs n))
-               #:unless (regexp-match? re-pages (hash-ref objs n)))
-      n))
-  (unless (pair? pages-src)
-    (error 'decrypt-pdf
-           "objects survive but no direct page objects found (~a compressed object stream(s), ~a object(s) unfolded)"
-           objstms objstm-extracted))
+    (let ((direct (for/list ((n (in-list nums))
+                             #:when (regexp-match? re-page (hash-ref objs n))
+                             #:unless (regexp-match? re-pages (hash-ref objs n)))
+                    n)))
+      (if (pair? direct)
+          direct
+          (let-values (((leaves missing damaged)
+                        (resolve-tree-leaves
+                         objs
+                         (append*
+                          (for/list ((n (in-list nums))
+                                     #:when (regexp-match? re-pages
+                                                           (hash-ref objs n)))
+                            (or (kids-references (hash-ref objs n)) null))))))
+            (cond
+              ;; tree resolved completely: adopt its leaf list
+              ((and (pair? leaves) (null? missing) (null? damaged)) leaves)
+              ((pair? missing)
+               (error 'decrypt-pdf
+                      "salvaged ~a object(s) but the page tree references ~a absent one(s): ~a - body truncated or pad covers only part of this file (~a compressed object stream(s), ~a object(s) unfolded)"
+                      (hash-count objs) (length missing)
+                      (number-run missing) objstms objstm-extracted))
+              (else
+               (error 'decrypt-pdf
+                      "no page objects and no usable page tree among ~a salvaged object(s) (~a damaged page-tree entr(ies)) (~a compressed object stream(s), ~a object(s) unfolded)"
+                      (hash-count objs) (length damaged)
+                      objstms objstm-extracted)))))))
   (define maxnum (apply max nums))
   (define cat-num (add1 maxnum))
   (define pages-num (+ maxnum 2))

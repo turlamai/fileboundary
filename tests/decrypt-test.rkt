@@ -10,6 +10,7 @@
          racket/file
          racket/port
          racket/runtime-path
+         racket/string
          file/unzip
          "../src/engine/decrypt.rkt")
 
@@ -222,3 +223,110 @@
 (check-equal? (call-with-values
                (lambda () (parse-wrapper #"\x64\x14\x23\x65\x01\x02\x03\x04")) list)
               (list #x0201 #x0403))
+
+;; ---------- salvage: spaced canonical dict forms ("/Type /Page") ------
+
+;; Regressions for the field failure "objects survive but no direct
+;; page objects found": plain byte-regexp patterns treated \s as a
+;; literal "s", so the spaced canonical PDF dict form never matched
+;; and every page sniff came up empty on producers that write it.
+
+;; spaced independent leaves + spaced pages tree: the direct leaf
+;; sniff must now match without falling back to the tree walk
+(define spaced-body
+  (xor-pad
+   (string->bytes/utf-8
+    (string-append
+     (make-string 512 #\A)
+     "\n10 0 obj\n<< /Type /Pages /Kids [1 0 R 2 0 R] /Count 2 >>\nendobj\n"
+     "\n1 0 obj\n<< /Type /Page /Parent 10 0 R /Contents 20 0 R >>\nendobj\n"
+     "\n2 0 obj\n<< /Type /Page /Parent 10 0 R /Contents 20 0 R >>\nendobj\n"
+     "\n20 0 obj\n<< /Length 8 >>\nstream\nBT ET\nendstream\nendobj\n"))
+   pad))
+(define spaced-ok (decrypt-pdf spaced-body pad))
+(check-equal? (hash-ref spaced-ok 'pages) 2)
+(check-equal? (hash-ref spaced-ok 'xrefBad) 0)
+
+;; the user-facing failure profile end to end: the page leaves live in
+;; an ObjStm whose dict is also written in the spaced form, so the
+;; pre-fix engine neither matched the tree nor unfolded the stream
+(require file/gzip)
+(define (adler32 bs)
+  (define-values (a b)
+    (for/fold ((a 1) (b 0))
+              ((c (in-bytes bs)))
+      (values (modulo (+ a c) 65521) (modulo (+ b a c) 65521))))
+  (+ (* b 65521) a))
+(define (zlib-deflate bs)
+  (define out (open-output-bytes))
+  (write-byte #x78 out)
+  (write-byte #x9C out)
+  (define-values (_in _out _crc) (deflate (open-input-bytes bs) out))
+  (define n (adler32 bs))
+  (bytes-append (get-output-bytes out)
+                (bytes (bitwise-and (arithmetic-shift n -24) 255)
+                       (bitwise-and (arithmetic-shift n -16) 255)
+                       (bitwise-and (arithmetic-shift n -8) 255)
+                       (bitwise-and n 255))))
+(define objstm-payload
+  (string->bytes/utf-8
+   (string-append
+    "1 0 2 0 "
+    "<< /Type /Page /Parent 10 0 R /Contents 20 0 R >>\n"
+    "<< /Type /Page /Parent 10 0 R /Contents 20 0 R >>\n")))
+(define objstm-stream (zlib-deflate objstm-payload))
+(define objstm-body
+  (string->bytes/utf-8
+   (string-append
+    "\n5 0 obj\n<< /Type /ObjStm /N 2 /First 8 /Filter /FlateDecode /Length "
+    (number->string (bytes-length objstm-stream))
+    " >>\nstream\n")))
+(define spaced-objstm-body
+  (xor-pad
+   (bytes-append
+    (string->bytes/utf-8 (make-string 512 #\A))
+    (string->bytes/utf-8
+     "\n10 0 obj\n<< /Type /Pages /Kids [1 0 R 2 0 R] /Count 2 >>\nendobj\n")
+    objstm-body
+    objstm-stream
+    #"\nendstream\nendobj\n"
+    (string->bytes/utf-8
+     "\n20 0 obj\n<< /Length 8 >>\nstream\nBT ET\nendstream\nendobj\n"))
+   pad))
+(define spaced-objstm-ok (decrypt-pdf spaced-objstm-body pad))
+(check-equal? (hash-ref spaced-objstm-ok 'pages) 2)
+(check-equal? (hash-ref spaced-objstm-ok 'xrefBad) 0)
+
+;; ---------- salvage: pages-tree resolution (PDF 1.5+ no-xref bodies) --
+
+;; synthetic body whose page LEAVES lost their /Type bytes (they sat in
+;; the overwritten head zone — the field failure mode behind "no direct
+;; page objects found"): the direct leaf sniff must come up empty and
+;; the salvaged /Type/Pages tree must resolve the leaves via /Kids.
+;; The body is fabricated with the pad itself (XOR is its own inverse).
+(define (salvage-body kids-list leaf-tail)
+  (define body
+    (string->bytes/utf-8
+     (string-append
+      (make-string 512 #\A)
+      "\n5 0 obj\n<< /Type /Pages /Kids[" kids-list "] /Count 2 >>\nendobj\n"
+      "\n1 0 obj\n<< /Parent 5 0 R /Contents 7 0 R /Resources << >> >>\nendobj\n"
+      "\n2 0 obj\n<< /Parent 5 0 R /Contents 7 0 R /Resources << >> >>\nendobj\n"
+      "\n7 0 obj\n<< /Length 12 >>\nstream\nBT ET endobj\n" leaf-tail)))
+  (xor-pad body pad))
+
+;; both leaves survive: the tree recovers them even without /Type/Page
+(define tree-ok (decrypt-pdf (salvage-body "1 0 R 2 0 R" "") pad))
+(check-equal? (hash-ref tree-ok 'pages) 2)
+(check-equal? (hash-ref tree-ok 'xrefBad) 0)
+
+;; a leaf referenced by /Kids but absent from the body is hard
+;; evidence of truncation: the error must name the missing number
+(define truncated-msg
+  (with-handlers ((exn:fail? (lambda (e) (exn-message e))))
+    (decrypt-pdf (salvage-body "1 0 R 2 0 R 3 0 R" "") pad)
+    #f))
+(check-true (and truncated-msg
+                 (regexp-match? #rx"references 1 absent" truncated-msg)
+                 (string-contains? truncated-msg "absent one(s): 3 ")
+                 (regexp-match? #rx"truncated or pad covers only part" truncated-msg)))
