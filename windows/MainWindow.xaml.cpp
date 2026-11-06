@@ -86,13 +86,13 @@ MainWindow::MainWindow() {
         TwinCipherBox()}) {
     box.AddHandler(
         winrt::Microsoft::UI::Xaml::UIElement::DragOverEvent(),
-        winrt::Microsoft::UI::Xaml::DragEventHandler(
-            this, &MainWindow::FileBox_DragOver),
+        winrt::box_value(winrt::Microsoft::UI::Xaml::DragEventHandler(
+            this, &MainWindow::FileBox_DragOver)),
         true);
     box.AddHandler(
         winrt::Microsoft::UI::Xaml::UIElement::DropEvent(),
-        winrt::Microsoft::UI::Xaml::DragEventHandler(
-            this, &MainWindow::FileBox_Drop),
+        winrt::box_value(winrt::Microsoft::UI::Xaml::DragEventHandler(
+            this, &MainWindow::FileBox_Drop)),
         true);
   }
   // Comfortable default; the layout is fluid and scrolls on smaller sizes.
