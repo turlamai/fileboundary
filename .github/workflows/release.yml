@@ -91,7 +91,10 @@ jobs:
           RIVET_UPDATE_KEY_ID: fileboundary-2026-11
         run: |
           set -euo pipefail
-          work="$(mktemp -d)"
+          # RUNNER_TEMP is a Windows path that survives across steps; a
+          # Git Bash mktemp -d path does not survive into the pwsh steps
+          work="$RUNNER_TEMP/fb-signing"
+          mkdir -p "$work"
           printf '%s' "$RIVET_UPDATE_PRIVATE_KEY_PEM" > "$work/update-signing-key.pem"
           bash scripts/check-release-signing-key.sh "$work/update-signing-key.pem"
           openssl pkey -in "$work/update-signing-key.pem" -outform DER -out "$work/update-signing-key.der"
