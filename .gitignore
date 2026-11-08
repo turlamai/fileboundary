@@ -55,3 +55,7 @@ compiled/
 test-output/
 windows/GeneratedBackend.hpp
 research/t0/dbg*
+windows/Generated Files/
+windows/RivetHost/
+windows/x64/
+.rivet/

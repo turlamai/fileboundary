@@ -92,7 +92,7 @@ Planned scope — each capability lands through its tracked issue:
 6. **Manage the recovery flow** — manifest-driven selection, per-attempt audit trail, reconciliation of recovered set against the manifest ([docs/recovery-workflow.md](docs/recovery-workflow.md)).
 7. **Two front ends** — a native Windows GUI and a CLI that speaks a versioned JSON contract for agents and automation ([#7](https://github.com/turlamai/fileboundary/issues/7)).
 8. **Engineering rigor** — Windows CI, automated tests and bilingual documentation from day one ([#6](https://github.com/turlamai/fileboundary/issues/6), [#8](https://github.com/turlamai/fileboundary/issues/8)).
-9. **Self-update** — `update check` / `update apply` against the GitHub Releases channel, with delta packages that carry only changed files ([ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)).
+9. **Self-update** — an Ed25519-signed release feed checked silently at launch (throttled, off-switchable), with consent-gated in-app download and install plus rollback on failure ([ADR-0011](docs/decisions/ADR-0011-rivet-signed-update-pipeline.md)).
 
 ## Research mandate
 

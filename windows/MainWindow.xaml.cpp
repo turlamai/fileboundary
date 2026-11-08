@@ -136,6 +136,9 @@ MainWindow::MainWindow() {
     // Signal coverage is platform policy and never blocks startup; the
     // window-close path above still runs the orderly shutdown.
   }
+  // A previous update attempt may have left a failure marker behind; the
+  // report happens before any backend wiring (pure filesystem read).
+  HandleInstallMarkers();
   InitializeBackendAsync();
 }
 
@@ -202,36 +205,6 @@ void MainWindow::ShowPanel(std::wstring const& tag) {
                                         : Microsoft::UI::Xaml::Visibility::Collapsed);
   PanelUpdate().Visibility(tag == L"update" ? Microsoft::UI::Xaml::Visibility::Visible
                                             : Microsoft::UI::Xaml::Visibility::Collapsed);
-}
-
-void MainWindow::RunUpdateCheckAsync() {
-  auto backend = backend_;
-  if (!backend || !backend->running()) {
-    SetErrorUi("Racket backend not running");
-    return;
-  }
-  SetBusyUi(true);
-  auto const dispatcher = DispatcherQueue();
-  auto const weak = get_weak();
-  try {
-    rivet_app::API api(*backend);
-    (void)api.update_check_summary_async("",
-        [dispatcher, weak](rivet_app::Result<std::string> result) mutable {
-          try {
-            auto message = result.get();
-            dispatcher.TryEnqueue([weak, message = std::move(message)] {
-              if (auto window = weak.get()) window->ShowUpdateCheckResult(message);
-            });
-          } catch (std::exception const& e) {
-            auto error = std::string(e.what());
-            dispatcher.TryEnqueue([weak, error = std::move(error)] {
-              if (auto window = weak.get()) window->SetErrorUi(error);
-            });
-          }
-        });
-  } catch (std::exception const& e) {
-    SetErrorUi(e.what());
-  }
 }
 
 // ---------------- file pickers ----------------
@@ -466,12 +439,6 @@ void MainWindow::Twin_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
   RunTwinAsync();
-}
-
-void MainWindow::UpdateCheck_Click(
-    winrt::Windows::Foundation::IInspectable const&,
-    Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  RunUpdateCheckAsync();
 }
 
 void MainWindow::PathBox_KeyDown(
@@ -801,48 +768,6 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
   }
 }
 
-// Friendly rendering of the update check: verdict-first, no raw JSON.
-// The raw JSON stays one click away via the copy button.
-void MainWindow::ShowUpdateCheckResult(std::string const& json) {
-  SetBusyUi(false);
-  try {
-    auto const obj =
-        winrt::Windows::Data::Json::JsonObject::Parse(winrt::to_hstring(json));
-    auto const available = obj.GetNamedBoolean(L"updateAvailable");
-    auto const current = obj.GetNamedString(L"currentVersion");
-    auto const latest = obj.GetNamedString(L"latestVersion");
-    std::wstring title;
-    std::wstring body;
-    if (available) {
-      title = L"发现新版本";
-      body = L"当前版本：" +
-             std::wstring{current.c_str()} +
-             L"\n最新版本：" +
-             std::wstring{latest.c_str()} +
-             L"\n请到 GitHub Releases 页面下载新版本的 MSI 安装包。";
-      StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
-      StatusBar().Message(L"发现新版本。");
-    } else {
-      title = L"已是最新版本";
-      body = L"当前版本：" +
-             std::wstring{current.c_str()} +
-             L"\n最新版本：" +
-             std::wstring{latest.c_str()} +
-             L"\n无需更新。";
-      StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success);
-      StatusBar().Message(L"已是最新版本。");
-    }
-    ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
-    ResultTitle().Text(title);
-    ResultText().Text(body);
-    last_result_text_ = winrt::to_hstring(json);
-  } catch (...) {
-    ShowTextResult(L"检查结果", winrt::to_hstring(json),
-                   Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational,
-                   L"检查完成。");
-  }
-}
-
 void MainWindow::ShowTwinResult(std::string const& json) {
   SetBusyUi(false);
   try {
@@ -898,6 +823,27 @@ void MainWindow::ShowFailed(std::string const& what) {
 
 void MainWindow::SetReadyUi() {
   SetBusyUi(false);
+  // Update wiring (update contract): stamp the install shape at startup,
+  // load the auto-check toggle, surface the running version, then schedule
+  // the silent throttled launch check.
+  try {
+    rivet_app::API api(*backend_);
+    auto const flavor = IsMsiInstall() ? "msi" : "zip";
+    (void)api.update_settings_set_async(
+        "install-flavor", flavor,
+        [](rivet_app::Result<std::string> result) {
+          try {
+            (void)result.get();
+          } catch (...) {
+          }
+        });
+  } catch (...) {
+    // Never block startup on the flavor stamp; RunUpdateCheck restamps it
+    // right before every check (the contract ordering).
+  }
+  LoadAutoCheckUpdatesSetting();
+  RefreshUpdateVersionLabel();
+  AutoCheckUpdatesAsync();
   // An idle app stays quiet - except for the one actionable warning:
   // an elevated window cannot receive Explorer drag-drop (UIPI), and
   // a silent no-reaction drop is exactly the confusion this explains.

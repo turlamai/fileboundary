@@ -7,7 +7,7 @@
          racket/string
          (prefix-in domain: "../src/engine/summary.rkt")
          (prefix-in dec: "../src/engine/decrypt.rkt")
-         (prefix-in upd: "../src/engine/update.rkt")
+         (prefix-in upd: "update.rkt")
          "../src/version.rkt")
 
 (provide start)
@@ -69,25 +69,38 @@
          'output (path->string
                   (file-name-from-path (simple-form-path output))))))
 
-;; update check: the GUI delegates to the same engine entry as
-;; `racket src/cli.rkt update check` (ADR-0008 channel). The manifest
-;; URL is the default release channel unless the caller supplies one.
-;; Returns current version, latest version, and whether an update is
-;; available — enough for the UI to inform the operator without any
-;; push mechanism (every network access is explicit and operator-
-;; initiated per ADR-0008).
-(define default-channel-url
-  "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
+;; update: the GUI drives the signed update pipeline (docs/update-contract.md,
+;; ADR-0011) through the same state machine the family products run — check
+;; reports available/up-to-date/error and settles the silent-check throttle
+;; stamp, download is a start/cancel toggle, and the phase state is polled.
+;; The host owns installation; the backend never installs.
+(define (update-settings-whitelist op key)
+  (case op
+    [("get") (member key '("install-flavor" "auto-check-updates"
+                           "last-update-check"))]
+    [("set") (member key '("install-flavor" "auto-check-updates"))]
+    [else #f]))
 
-(define-rpc (update-check-summary [manifest : String] : String)
-  (define source
-    (if (string=? (string-trim manifest) "")
-        default-channel-url
-        (string-trim manifest)))
-  (define m (upd:fetch-manifest source))
-  (jsexpr->string
-   (upd:check-update->summary
-    (upd:check-update m product-version))))
+(define-rpc (update-settings-get [key : String] : String)
+  (if (update-settings-whitelist "get" key)
+      (upd:setting-ref key)
+      (error 'update-settings-get "setting key not allowed: ~a" key)))
+
+(define-rpc (update-settings-set [key : String] [value : String] : String)
+  (unless (update-settings-whitelist "set" key)
+    (error 'update-settings-set "setting key not allowed: ~a" key))
+  (upd:setting-set! key value)
+  (when (equal? key "install-flavor") (upd:update-flavor! value))
+  (upd:setting-ref key))
+
+(define-rpc (update-check : String)
+  (jsexpr->string (upd:update-check-update!)))
+
+(define-rpc (update-download : String)
+  (upd:update-start-or-cancel-download!))
+
+(define-rpc (update-state : String)
+  (upd:update-state-snapshot))
 
 (define (start in-fd out-fd)
   (serve-fds in-fd out-fd))

@@ -1,25 +1,24 @@
-# Post-packaging smoke test (issue #9, extended by ADR-0010 / issue #42).
-# Verifies the release artifacts from a clean environment: the portable
-# zip extracts with the required discoverability layout (single top-level
-# directory, README.txt, launcher), its checksum matches, the packaged
-# GUI executable boots, the MSI installs and uninstalls cleanly, the
-# source distribution's CLI emits valid JSON envelopes (version/doctor),
-# and the update-channel full package applies into a clean install root.
+# Post-packaging smoke test (issue #9, extended by ADR-0010 / issue #42;
+# update channel switched to the signed feed by ADR-0011). Verifies the
+# release artifacts from a clean environment: the portable zip extracts
+# with the required discoverability layout (single top-level directory,
+# README.txt, launcher), its checksum matches, the packaged GUI executable
+# boots, the MSI installs and uninstalls cleanly, the source distribution's
+# CLI emits valid JSON envelopes (version/doctor), and the signed update
+# feed parses as the rivet wrapper with matching artifact URLs.
 #
 # Usage:
 #   pwsh tools/release_smoke.ps1 -Version 0.2.1 `
 #       -SourceDir <repo-root> `
 #       -PortableZip dist/release/fileboundary-0.2.1-windows-x64.zip `
 #       -MsiPath dist/release/fileboundary-0.2.1-windows-x64.msi `
-#       -FullPackage dist/release/fileboundary-0.2.1-windows-x64-update.zip `
-#       -Manifest dist/release/manifest.json
+#       -UpdateManifest dist/release/update-stable.json
 param(
   [Parameter(Mandatory = $true)][string]$Version,
   [Parameter(Mandatory = $true)][string]$SourceDir,
   [Parameter(Mandatory = $true)][string]$PortableZip,
   [Parameter(Mandatory = $true)][string]$MsiPath,
-  [Parameter(Mandatory = $true)][string]$FullPackage,
-  [Parameter(Mandatory = $true)][string]$Manifest
+  [Parameter(Mandatory = $true)][string]$UpdateManifest
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -96,16 +95,29 @@ try {
   Assert-True ($null -ne $doctorEnvelope.data) "doctor envelope has no data"
   Write-Output "smoke: CLI version $($versionEnvelope.data.version) + doctor envelopes OK"
 
-  # --- 5. update channel: full package applies into a clean root ---
-  $root = Join-Path $work 'install-root'
-  New-Item -ItemType Directory -Path $root | Out-Null
-  $applyJson = & racket (Join-Path $SourceDir 'src/cli.rkt') update apply --package $FullPackage --manifest $Manifest --root $root | Out-String
-  $applyEnvelope = $applyJson | ConvertFrom-Json
-  Assert-True ($applyEnvelope.status -eq 'ok') "update apply failed: $($applyEnvelope.errors | ConvertTo-Json -Compress)"
-  Assert-True (Test-Path (Join-Path $root 'current.txt')) "apply did not create the current.txt marker"
-  $current = (Get-Content (Join-Path $root 'current.txt') -Raw).Trim()
-  Assert-True ($current -eq $Version) "current.txt is '$current', expected $Version"
-  Write-Output "smoke: update apply into clean root -> $current OK"
+  # --- 5. signed update feed: rivet wrapper shape + artifact parity ---
+  # (the signature itself is verified by `raco rivet verify-release-assets`
+  # in the release workflow; this smoke re-checks the structural shape and
+  # that the URL-referenced assets exist beside the feed with matching
+  # names)
+  Assert-True (Test-Path $UpdateManifest) "signed update manifest missing: $UpdateManifest"
+  $feed = Get-Content -LiteralPath $UpdateManifest -Raw | ConvertFrom-Json
+  Assert-True ($feed.schema -eq 1) "feed wrapper schema: $($feed.schema)"
+  Assert-True ($feed.signature.algorithm -eq 'ed25519') "feed signature algorithm: $($feed.signature.algorithm)"
+  Assert-True (![string]::IsNullOrEmpty($feed.signature.keyId)) "feed signature keyId missing"
+  Assert-True (![string]::IsNullOrEmpty($feed.payload)) "feed payload missing"
+  $inner = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($feed.payload)) | ConvertFrom-Json
+  Assert-True ($inner.version -eq $Version) "feed inner version '$($inner.version)' does not match release $Version"
+  Assert-True ($inner.artifacts.Count -ge 2) "feed must carry at least the zip + msi artifacts, found: $($inner.artifacts.Count)"
+  $feedDir = (Resolve-Path (Join-Path $UpdateManifest '..')).Path
+  foreach ($a in $inner.artifacts) {
+    $name = ($a.url -split '/')[-1]
+    Assert-True (Test-Path (Join-Path $feedDir $name)) "feed artifact missing from release set: $name"
+    Assert-True ($a.sha256 -match '^[0-9a-f]{64}$') "artifact $name has a malformed sha256"
+    $actualHash = (Get-FileHash -LiteralPath (Join-Path $feedDir $name) -Algorithm SHA256).Hash.ToLowerInvariant()
+    Assert-True ($actualHash -eq $a.sha256) "artifact $name sha256 mismatch against the signed feed"
+  }
+  Write-Output "smoke: signed update feed (v$($inner.version), $($inner.artifacts.Count) artifacts) OK"
 
   Write-Output "SMOKE PASSED for v$Version"
 } finally {

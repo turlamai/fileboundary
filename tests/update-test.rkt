@@ -1,19 +1,32 @@
 #lang racket/base
 
-;; Update engine tests (ADR-0008): SHA-256 vectors, version compare,
-;; manifest parsing, check logic, and full/delta package application with
-;; locally built packages — no network anywhere.
+;; Update pipeline tests (ADR-0011): trust-root sanity, the operator
+;; settings store, Ed25519 manifest sign/verify with a throwaway keypair,
+;; select-update gates (key id, rollout bucket, install flavor, app id,
+;; downgrades), the managed updater's check/download lifecycle over a
+;; loopback HTTP server with signed-artifact verification, the CLI
+;; envelope surface, and the MSVCRT argv quoting the spawn path relies
+;; on. No external network anywhere: manifests are signed in-process and
+;; artifacts come from a local TCP listener.
 
 (require rackunit
          json
+         racket/async-channel
          racket/file
          racket/list
          racket/path
+         racket/port
+         racket/runtime-path
          racket/string
-         file/zip
+         racket/tcp
+         (prefix-in rivet: rivet/distribution)
+         (prefix-in rivet-ts: (submod rivet/distribution/managed-updater test-support))
+         (prefix-in upd: "../app/update.rkt")
          "../src/engine/sha256.rkt"
-         "../src/engine/update.rkt"
+         "../src/engine/winproc.rkt"
          "../src/version.rkt")
+
+(define-runtime-path cli-path "../src/cli.rkt")
 
 ;; ---------- SHA-256 (FIPS 180-4 vectors) ----------
 
@@ -30,237 +43,6 @@
 (check-equal? (sha256-file tmp0) (sha256-hex (file->bytes tmp0)))
 (delete-file tmp0)
 
-;; ---------- versions ----------
-
-(check-equal? (call-with-values (lambda () (parse-version "0.2.0+abc123")) list)
-              (list (list 0 2 0) "abc123"))
-(check-equal? (call-with-values (lambda () (parse-version "1.0.0")) list)
-              (list (list 1 0 0) #f))
-(check-equal? (version<? "0.1.0" "0.2.0") #t)
-(check-equal? (version<? "0.10.0" "0.2.0") #f)
-(check-equal? (version<? "0.1.9" "0.1.10") #t)
-(check-equal? (version=? "1.2.3+x" "1.2.3+y") #t)
-(check-exn exn:fail? (lambda () (parse-version "0.1.0-dev")))
-
-;; ---------- manifest ----------
-
-;; a version strictly above the running product version, computed from
-;; the single version source: the updateAvailable check below invokes
-;; the CLI, so the manifest version must stay ahead across bumps
-(define next-version
-  (let* ([parts (string-split version ".")]
-         [patch (string->number (list-ref parts 2))])
-    (string-join (append (take parts 2)
-                         (list (number->string (add1 patch))))
-                 ".")))
-
-(define valid-manifest
-  (hash 'schemaVersion 1
-        'channel "stable"
-        'version next-version
-        'commit "abc1234"
-        'created "2026-10-30T00:00:00Z"
-        'package (hash 'kind "full" 'name "FB.zip" 'bytes 123
-                       'sha256 (make-string 64 #\a)
-                       'url "https://example.invalid/FB.zip")
-        'deltas '()))
-
-(check-equal? (parse-manifest valid-manifest) valid-manifest)
-(check-exn exn:fail? (lambda () (parse-manifest (hash-remove valid-manifest 'deltas))))
-(check-exn exn:fail? (lambda () (parse-manifest
-                                 (hash-set valid-manifest 'version "0.1.0-dev"))))
-(check-exn exn:fail? (lambda () (parse-manifest
-                                 (hash-set valid-manifest 'package
-                                           (hash-remove (hash-ref valid-manifest 'package) 'sha256)))))
-
-;; ---------- check ----------
-
-(define check-result (check-update valid-manifest "0.1.0"))
-(check-equal? (hash-ref check-result 'action) "update")
-(check-equal? (hash-ref check-result 'latestVersion) next-version)
-(check-equal? (hash-ref (check-update valid-manifest next-version) 'action) "none")
-
-;; the GUI summary mapping: updateAvailable must follow the action.
-;; It once read a nonexistent 'updateAvailable key from the raw result
-;; and the GUI reported "already up to date" forever.
-(define summary-update (check-update->summary check-result))
-(check-equal? (hash-ref summary-update 'updateAvailable) #t)
-(check-equal? (hash-ref summary-update 'latestVersion) next-version)
-(check-equal? (hash-ref summary-update 'currentVersion) "0.1.0")
-(check-equal? (hash-ref summary-update 'action) "update")
-(define summary-none
-  (check-update->summary (check-update valid-manifest next-version)))
-(check-equal? (hash-ref summary-none 'updateAvailable) #f)
-(check-equal? (hash-ref summary-none 'action) "none")
-
-;; ---------- package builders ----------
-
-;; write a file tree from an assoc of rel-path (forward slashes) -> bytes
-(define (make-tree root files)
-  (for ([(rel content) files])
-    (define p (build-path root (string->path rel)))
-    (make-directory* (path-only p))
-    (with-output-to-file p (lambda () (write-bytes content)) #:exists 'replace)))
-
-;; sha256 of a string, as hex
-(define (h s) (sha256-hex (string->bytes/utf-8 s)))
-
-(define (zip-tree zip-path src-dir)
-  ;; file/zip stores paths as given: run from inside the tree so entries
-  ;; are relative, never absolute
-  (when (file-exists? zip-path) (delete-file zip-path))
-  (parameterize ([current-directory src-dir])
-    (zip zip-path (string->path "."))))
-
-;; ---------- full package apply ----------
-
-(define pkg-src (make-temporary-file "fb-pkg-src~a" 'directory))
-(make-tree pkg-src
-           (hash "app.txt" #"new app"
-                 "bin/tool.txt" #"new tool"))
-(define filetable
-  (hash 'version "0.3.0"
-        'files (list (hash 'path "app.txt" 'sha256 (h "new app"))
-                     (hash 'path "bin/tool.txt" 'sha256 (h "new tool")))))
-(with-output-to-file (build-path pkg-src "filetable.json")
-  (lambda () (write-json filetable)) #:exists 'replace)
-(define pkg-zip (make-temporary-file "fb-full~a.zip"))
-(zip-tree pkg-zip pkg-src)
-
-(define pkg-meta (hash 'kind "full"
-                       'sha256 (sha256-file pkg-zip)))
-
-(define root (make-temporary-file "fb-root~a" 'directory))
-(check-equal? (apply-package pkg-zip pkg-meta root) "0.3.0")
-(check-equal? (installed-version root) "0.3.0")
-(check-equal? (file->string (build-path root "releases" "0.3.0" "app.txt"))
-              "new app")
-(check-equal? (file->string (build-path root "releases" "0.3.0" "bin" "tool.txt"))
-              "new tool")
-
-;; tampered package must be rejected before extraction
-(define tampered (make-temporary-file "fb-tampered~a.zip"))
-(copy-file pkg-zip tampered #:exists-ok? #t)
-;; corrupt: flip bytes late in the file (past headers, inside payload)
-(define raw (file->bytes tampered))
-(define raw2 (bytes-copy raw))
-(bytes-set! raw2 (- (bytes-length raw2) 3)
-            (bitwise-xor (bytes-ref raw2 (- (bytes-length raw2) 3)) #xFF))
-(display-to-file raw2 tampered #:exists 'replace)
-(check-exn exn:fail? (lambda () (apply-package tampered pkg-meta root)))
-(delete-file tampered)
-
-;; ---------- delta package apply ----------
-
-;; base install at 0.1.0 with one file whose guard we replace, one we delete
-(define root2 (make-temporary-file "fb-root2~a" 'directory))
-(make-tree root2 (hash "app.txt" #"old app"
-                       "bin/obsolete.txt" #"obsolete"))
-(set-current-version! root2 "0.1.0")
-
-(define delta-src (make-temporary-file "fb-delta-src~a" 'directory))
-(make-tree delta-src
-           (hash "payload/app.txt" #"patched app"
-                 "payload/bin/added.txt" #"added"))
-(define delta-spec
-  (hash 'schemaVersion 1
-        'baseVersion "0.1.0"
-        'targetVersion "0.2.0"
-        'operations (list (hash 'action "replace" 'path "app.txt"
-                                'baseSha256 (h "old app")
-                                'sha256 (h "patched app"))
-                          (hash 'action "add" 'path "bin/added.txt"
-                                'sha256 (h "added"))
-                          (hash 'action "delete" 'path "bin/obsolete.txt"
-                                'baseSha256 (h "obsolete")))))
-(with-output-to-file (build-path delta-src "delta.json")
-  (lambda () (write-json delta-spec)) #:exists 'replace)
-(define delta-zip (make-temporary-file "fb-delta~a.zip"))
-(zip-tree delta-zip delta-src)
-
-(define delta-meta
-  (hash 'kind "delta" 'sha256 (sha256-file delta-zip)))
-
-(check-equal? (apply-package delta-zip delta-meta root2) "0.2.0")
-(check-equal? (installed-version root2) "0.2.0")
-(check-equal? (file->string (build-path root2 "app.txt")) "patched app")
-(check-equal? (file->string (build-path root2 "bin" "added.txt")) "added")
-(check-false (file-exists? (build-path root2 "bin" "obsolete.txt")))
-
-;; guard mismatch (drifted base) must abort the delta
-(define root3 (make-temporary-file "fb-root3~a" 'directory))
-(make-tree root3 (hash "app.txt" #"DRIFTED content"))
-(set-current-version! root3 "0.1.0")
-(check-exn exn:fail? (lambda () (apply-package delta-zip delta-meta root3)))
-;; aborted delta must not have touched the tree
-(check-equal? (file->string (build-path root3 "app.txt")) "DRIFTED content")
-(check-equal? (installed-version root3) "0.1.0")
-
-;; ---------- CLI envelope smoke ----------
-
-(require "../src/cli.rkt"
-         racket/port)
-(define (invoke args)
-  (define stdout (open-output-string))
-  (define code (parameterize ([current-output-port stdout])
-                 (run-cli args)))
-  (values code (string->jsexpr (get-output-string stdout))))
-
-(define-values (sc1 d1) (invoke '("update" "status")))
-(check-equal? sc1 0)
-(check-equal? (hash-ref d1 'errors) '())
-(define d1-data (hash-ref d1 'data))
-;; the CLI reports its live version (single source: rivet.rktd), so
-;; the assertion tracks product-version instead of a frozen literal
-(check-equal? (hash-ref d1-data 'runningVersion) product-version)
-(check-true (hash-has-key? d1-data 'installRoot))
-
-(define manifest-path (make-temporary-file "fb-manifest~a.json"))
-(with-output-to-file manifest-path
-  (lambda () (write-json valid-manifest)) #:exists 'replace)
-;; ---------- one-command update-now (e2e, no network) ----------
-
-;; root at 0.2.0 -> `now` against a manifest whose package url is a LOCAL
-; file must land on 0.3.0 (the http and local paths share one code path)
-(define root4 (make-temporary-file "fb-root4~a" 'directory))
-;; seed: install the 0.3.0 full package, then pretend we're one behind by
-;; resetting the marker — the important part is the apply-from-manifest
-;; flow over a file://-style source
-(void (apply-package pkg-zip pkg-meta root4))
-(set-current-version! root4 "0.2.0")
-(define now-manifest (make-temporary-file "fb-now~a.json"))
-(with-output-to-file now-manifest
-  (lambda ()
-    (write-json
-     (hash 'schemaVersion 1 'channel "stable" 'version "0.3.0"
-           'commit "abc1234"
-           'package (hash 'kind "full" 'name (path->string pkg-zip)
-                          'bytes (file-size pkg-zip)
-                          'sha256 (sha256-file pkg-zip)
-                          'url (path->string pkg-zip))
-           'deltas '())))
-  #:exists 'replace)
-(define-values (sc3 d3)
-  (invoke (list "update" "now" "--manifest" (path->string now-manifest)
-                "--root" (path->string root4))))
-(check-equal? sc3 0)
-(check-equal? (hash-ref (hash-ref d3 'data) 'action) "applied")
-(check-equal? (hash-ref (hash-ref d3 'data) 'appliedVersion) "0.3.0")
-(check-equal? (installed-version root4) "0.3.0")
-;; and a no-op now reports action none
-(define-values (sc4 d4)
-  (invoke (list "update" "now" "--manifest" (path->string now-manifest)
-                "--root" (path->string root4))))
-(check-equal? (hash-ref (hash-ref d4 'data) 'action) "none")
-
-(define-values (sc2 d2)
-  (invoke (list "update" "check" "--manifest" (path->string manifest-path))))
-(check-equal? sc2 0)
-(check-equal? (hash-ref d2 'errors) '())
-(define d2-data (hash-ref d2 'data))
-(check-equal? (hash-ref d2-data 'updateAvailable) #t)
-(check-equal? (hash-ref d2-data 'latestVersion) next-version)
-
 ;; ---------- MSVCRT argv quoting (CreateProcessW path) ----------
 
 (check-equal? (windows-quote-arg "") "\"\"")
@@ -269,8 +51,301 @@
               "\"C:/Users/foo bar/out.txt\"")
 ;; embedded quote is escaped, and backslashes before it double
 (check-equal? (windows-quote-arg "a\"b") "\"a\\\"b\"")
-;; bare arguments (no whitespace/quote) pass through unquoted: a
-;; trailing backslash only needs doubling INSIDE a quoted argument
+;; bare arguments (no whitespace/quote) pass through unquoted
 (check-equal? (windows-quote-arg "C:/dir/") "C:/dir/")
 (check-equal? (windows-quote-arg "C:/dir\\") "C:/dir\\")
-(check-equal? (windows-quote-arg "C:/dir\\ ") "\"C:/dir\\\\ \"")
+;; backslashes double only when they immediately precede a quote
+;; (MSVCRT rule): a trailing backslash before a space stays single
+(check-equal? (windows-quote-arg "C:/dir\\ ") "\"C:/dir\\ \"")
+
+;; ---------- trust root ----------
+
+(define trust-root-bytes (rivet:base64-string->bytes upd:update-public-key-b64))
+(check-equal? (bytes-length trust-root-bytes) 44)  ; Ed25519 SPKI DER
+(check-not-false (rivet:bytes->ed25519-public-key trust-root-bytes))
+(check-false (string=? upd:update-key-id ""))
+(check-true (string-prefix? upd:default-feed-url "https://"))
+
+;; ---------- operator settings store ----------
+
+;; redirected store: tests never touch the operator's real settings
+(define settings-test-dir
+  (build-path (find-system-path 'temp-dir) "fb-update-test-settings"))
+(define settings-test-path
+  (build-path settings-test-dir "settings.json"))
+
+(check-equal? (parameterize ([upd:settings-path settings-test-path])
+                (upd:setting-ref "auto-check-updates" "1"))
+              "1")
+
+(parameterize ([upd:settings-path settings-test-path])
+  (upd:setting-set! "auto-check-updates" "0")
+  (check-equal? (upd:setting-ref "auto-check-updates" "1") "0")
+  (upd:setting-set! "auto-check-updates" "1")
+  (check-equal? (upd:setting-ref "auto-check-updates" "1") "1"))
+
+;; the sticky rollout bucket: drawn once from OS entropy, persisted, and
+;; redrawn when the stored value is corrupt — never an error at startup
+(parameterize ([upd:settings-path settings-test-path])
+  (define first-bucket (rivet:resolve-rollout-bucket! upd:settings-adapter))
+  (check-pred (λ (b) (and (exact-integer? b) (<= 0 b 99))) first-bucket)
+  (check-equal? (upd:setting-ref "update.rollout-bucket")
+                (number->string first-bucket))
+  ;; sticky: the same bucket comes back on the next read
+  (check-equal? (rivet:resolve-rollout-bucket! upd:settings-adapter)
+                first-bucket)
+  ;; corrupt value → redrawn, still in range
+  (upd:setting-set! "update.rollout-bucket" "garbage")
+  (define redrawn (rivet:resolve-rollout-bucket! upd:settings-adapter))
+  (check-pred (λ (b) (and (exact-integer? b) (<= 0 b 99))) redrawn))
+
+;; install flavor mapping
+(check-equal? (upd:resolve-flavor "zip") 'portable)
+(check-equal? (upd:resolve-flavor "msi") 'msi)
+(check-equal? (upd:resolve-flavor "") #f)
+(check-equal? (upd:resolve-flavor "tarball") #f)
+
+;; ---------- manifest sign / verify (throwaway Ed25519 keypair) ----------
+
+;; the key readers take file paths, so materialize the throwaway DERs
+(define test-key-dir
+  (build-path (find-system-path 'temp-dir) "fb-update-test-keys"))
+(make-directory* test-key-dir)
+(define test-priv-key-path (build-path test-key-dir "test-priv.der"))
+(define test-pub-key-path (build-path test-key-dir "test-pub.der"))
+(void (call-with-output-file test-priv-key-path
+  (λ (out)
+    (write-bytes
+     (rivet:base64-string->bytes
+      ;; throwaway keypair generated for this suite only — trusts nothing
+      "MC4CAQAwBQYDK2VwBCIEILaqmQwkwXJ6iF0LRyDAGL/mMwpc+JIxju6yME/JGIj7")
+     out))
+  #:exists 'truncate))
+(void (call-with-output-file test-pub-key-path
+  (λ (out)
+    (write-bytes
+     (rivet:base64-string->bytes
+      "MCowBQYDK2VwAyEA1TMdwuhDmXLAeeix74yWC7VKUB/5S0yQ9KGQYaCdQgE=")
+     out))
+  #:exists 'truncate))
+(define test-priv-key (rivet:read-ed25519-private-key test-priv-key-path))
+(define test-pub-key (rivet:read-ed25519-public-key test-pub-key-path))
+(define test-key-id "fileboundary-test-2026-11")
+
+(define payload (string->bytes/utf-8 "fileboundary update artifact payload"))
+(define payload-sha (sha256-hex payload))
+(define payload-size (bytes-length payload))
+
+(define (make-test-manifest #:version [version "0.7.0"]
+                            #:rollout [rollout 100]
+                            #:installer [installer 'zip]
+                            #:url [url "https://example.invalid/fb.zip"]
+                            #:application-id
+                            [application-id "dev.turlamai.fileboundary"])
+  (rivet:update-manifest
+   application-id version 1 'stable "2026-11-08T00:00:00Z"
+   "0.0.0" #f #t rollout
+   (list (rivet:update-artifact 'windows 'x64 url
+                                payload-sha payload-size installer '() #f))))
+
+;; a correctly signed manifest verifies and parses
+(define signed-wrapper
+  (let ([out (open-output-bytes)])
+    (rivet:write-signed-manifest (make-test-manifest)
+                                 test-priv-key test-key-id out)
+    (get-output-bytes out)))
+(define verified
+  (rivet:verify-signed-manifest (open-input-bytes signed-wrapper)
+                                test-pub-key #:key-id test-key-id))
+(check-equal? (rivet:update-manifest-version verified) "0.7.0")
+
+;; negatives fail closed: wrong key id, wrong key, tampered payload
+(check-exn exn:fail?
+           (λ () (rivet:verify-signed-manifest
+                  (open-input-bytes signed-wrapper)
+                  test-pub-key #:key-id "some-other-key-id")))
+(check-exn exn:fail?
+           (λ () (rivet:verify-signed-manifest
+                  (open-input-bytes signed-wrapper)
+                  (rivet:bytes->ed25519-public-key trust-root-bytes)
+                  #:key-id test-key-id)))
+
+;; flip one base64 character of the payload blob: the decoded bytes
+;; change, so the signature can no longer verify
+(define wrapper-text (bytes->string/utf-8 signed-wrapper))
+(define blob-start
+  (cdr (car (regexp-match-positions #rx"\"payload\":\"" wrapper-text))))
+(define flipped-char
+  (if (equal? (substring wrapper-text blob-start (add1 blob-start)) "A")
+      "B" "A"))
+(define tampered-text
+  (string-append (substring wrapper-text 0 blob-start)
+                 flipped-char
+                 (substring wrapper-text (add1 blob-start))))
+(check-exn exn:fail?
+           (λ () (rivet:verify-signed-manifest
+                  (open-input-bytes (string->bytes/utf-8 tampered-text))
+                  test-pub-key #:key-id test-key-id)))
+
+;; ---------- select-update gates ----------
+
+(define (config-for #:bucket [bucket 50]
+                    #:version [version "0.6.12"]
+                    #:public-key [public-key test-pub-key]
+                    #:key-id [key-id test-key-id])
+  (rivet:updater-config "dev.turlamai.fileboundary" version 'stable
+                        'windows 'x64 public-key key-id bucket
+                        (* 100 1024 1024) #f))
+
+;; newer version within rollout → candidate
+(check-not-false (rivet:select-update (config-for)
+                                      (make-test-manifest)))
+;; same or older version → nothing (downgrades are refused)
+(check-false (rivet:select-update (config-for #:version "0.7.0")
+                                  (make-test-manifest #:version "0.7.0")))
+(check-false (rivet:select-update (config-for #:version "0.7.1")
+                                  (make-test-manifest #:version "0.7.0")))
+;; rollout gate: bucket >= rollout → withheld, bucket < rollout → offered
+(check-false (rivet:select-update (config-for #:bucket 50)
+                                  (make-test-manifest #:rollout 50)))
+(check-not-false (rivet:select-update (config-for #:bucket 50)
+                                      (make-test-manifest #:rollout 51)))
+(check-false (rivet:select-update (config-for #:bucket 99)
+                                  (make-test-manifest #:rollout 1)))
+;; application identity gate: a mismatching manifest is rejected loudly
+(check-exn exn:fail?
+          (λ () (rivet:select-update
+                 (config-for)
+                 (make-test-manifest
+                  #:application-id "dev.turlamai.otherapp"))))
+;; install-kind gate: flavor picks the matching artifact
+(check-false (rivet:select-update (config-for)
+                                  (make-test-manifest)
+                                  #:install-kind 'msi))
+(check-not-false
+ (rivet:select-update
+  (config-for)
+  (make-test-manifest #:installer 'msi)
+  #:install-kind 'msi))
+
+;; ---------- managed updater lifecycle (loopback feed + artifact) ----------
+
+(define work-dir
+  (build-path (find-system-path 'temp-dir) "fb-update-test-work"))
+(define data-dir (build-path work-dir "data"))
+
+;; one-shot HTTP/1.1 responder: the first accepted connection is served
+;; `body`; further connections are answered with whatever was queued
+;; last. Serve #f to close without a body (connection reset territory).
+;; racket/tcp has no listener-port accessor, so bind a fixed candidate
+;; port and step forward on a collision.
+(define-values (server-listener server-port)
+  (let try ([candidate (+ 21000 (random 20000))])
+    (with-handlers ([exn:fail? (λ (_) (try (+ candidate 1)))])
+      (values (tcp-listen candidate 8 #t) candidate))))
+(define served-bodies (make-async-channel))
+(define server-thread
+  (thread
+   (λ ()
+     (let accept-next ()
+       (define-values (in out) (tcp-accept server-listener))
+       (handle-connection in out)
+       (accept-next)))))
+(define (handle-connection in out)
+  ;; drain the request head: blocking read through the blank line
+  (regexp-match #rx#"\r\n\r\n" in)
+  (define body (sync/timeout 30 served-bodies))
+  (cond
+    [(bytes? body)
+     (write-bytes
+      (string->bytes/utf-8
+       (format "HTTP/1.1 200 OK\r\nContent-Length: ~a\r\nConnection: close\r\n\r\n"
+               (bytes-length body)))
+      out)
+     (write-bytes body out)
+     (close-output-port out)]
+    [else
+     (with-handlers ([exn:fail? void]) (close-output-port out))]))
+(define (serve-next! body) (async-channel-put served-bodies body))
+
+;; the fake fetch hands back a manifest whose artifact URL points at the
+;; loopback server; the wrapper verification path is covered above
+(define (fake-fetch url public-key
+                    #:key-id [key-id #f]
+                    #:trusted-keys [trusted-keys #f]
+                    #:maximum-bytes [maximum-bytes #f])
+  (rivet:update-manifest
+   "dev.turlamai.fileboundary" "0.7.0" 1 'stable "2026-11-08T00:00:00Z"
+   "0.0.0" #f #t 100
+   (list (rivet:update-artifact
+          'windows 'x64
+          (format "http://127.0.0.1:~a/fb-0.7.0.zip" server-port)
+          payload-sha payload-size 'zip '() #f))))
+
+(define live-updater
+  (parameterize ([rivet-ts:current-managed-fetch-manifest fake-fetch])
+    (upd:make-app-updater
+     #:feed-url "https://example.invalid/update-stable.json"
+     #:current-version "0.6.12"
+     #:public-key
+     (rivet:base64-string->bytes
+      "MCowBQYDK2VwAyEA1TMdwuhDmXLAeeix74yWC7VKUB/5S0yQ9KGQYaCdQgE=")
+     #:key-id test-key-id
+     #:data-directory data-dir
+     #:rollout-bucket 50)))
+
+;; happy path: check → available → download with the real downloader,
+;; size+SHA verified against the signed artifact → downloaded state
+(serve-next! payload)
+(define check-result (rivet:updater-check! live-updater))
+(check-equal? (hash-ref check-result 'status) "available")
+(check-equal? (hash-ref check-result 'availableVersion) "0.7.0")
+(check-equal? (hash-ref (rivet:updater-state live-updater) 'phase)
+              "available")
+
+(rivet:updater-download! live-updater)
+(check-not-false (rivet:updater-wait live-updater 60))
+(define downloaded-state (rivet:updater-state live-updater))
+(check-equal? (hash-ref downloaded-state 'phase) "downloaded")
+(check-equal? (hash-ref downloaded-state 'percent) 100)
+(define downloaded-path (hash-ref downloaded-state 'downloadedPath))
+(check-true (and (string? downloaded-path)
+                 (not (string=? downloaded-path ""))))
+(check-equal? (file->bytes (string->path downloaded-path)) payload)
+
+;; tampered artifact: the server serves bytes that differ from the signed
+;; sha256 — the download must end in the error phase and never land at
+;; the destination
+(serve-next! (string->bytes/utf-8 "TAMPERED bytes, not signed"))
+(void (rivet:updater-check! live-updater))
+(rivet:updater-download! live-updater)
+(check-not-false (rivet:updater-wait live-updater 60))
+(check-equal? (hash-ref (rivet:updater-state live-updater) 'phase) "error")
+
+;; ---------- CLI envelope surface ----------
+
+;; the status envelope is local-only: running version from the single
+;; version source, flavor, toggle and feed present, no network
+(define (run-capture args)
+  (with-output-to-string
+    (λ () ((dynamic-require cli-path 'run-cli) args))))
+
+(define status-envelope
+  (read-json (open-input-string (run-capture (list "update" "status")))))
+(check-equal? (hash-ref status-envelope 'status) "ok")
+;; a dev tree carries the +dev build-metadata suffix; prefix match keeps
+;; the assertion independent of the checkout type
+(check-true
+ (string-prefix? (hash-ref (hash-ref status-envelope 'data) 'runningVersion)
+                 version))
+(check-equal? (hash-ref (hash-ref status-envelope 'data) 'feed)
+              upd:default-feed-url)
+
+;; the retired apply subcommand answers with a usage error
+(define apply-envelope
+  (read-json
+   (open-input-string
+    (run-capture
+     (list "update" "apply" "--package" "x.zip" "--manifest" "m.json")))))
+(check-equal? (hash-ref apply-envelope 'status) "error")
+(check-equal? (hash-ref apply-envelope 'command) "update")

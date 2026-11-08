@@ -45,10 +45,10 @@ jobs:
           variant: CS
           version: '9.3'
 
-      - name: Install pinned Rivet v0.13.0
+      - name: Install pinned Rivet v0.14.0
         shell: pwsh
         run: |
-          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.14.0'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
 
       # rivet's MSI builder drives WiX 5 (the 7.x line aborts with WIX7015
@@ -79,20 +79,44 @@ jobs:
           }
           Write-Output "Release version: v$version (build $shortSha)"
 
+      # The update feed is an Ed25519-signed rivet manifest (ADR-0011,
+      # docs/update-contract.md): prove the signing key matches the trust
+      # root embedded in app/update.rkt BEFORE any packaging, and stage the
+      # DER conversions raco rivet release consumes. Runs again implicitly
+      # at publish through the verify gate below.
+      - name: Signing preflight (trust root ↔ release key)
+        shell: bash
+        env:
+          RIVET_UPDATE_PRIVATE_KEY_PEM: ${{ secrets.RIVET_UPDATE_PRIVATE_KEY }}
+          RIVET_UPDATE_KEY_ID: fileboundary-2026-11
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          printf '%s' "$RIVET_UPDATE_PRIVATE_KEY_PEM" > "$work/update-signing-key.pem"
+          bash scripts/check-release-signing-key.sh "$work/update-signing-key.pem"
+          openssl pkey -in "$work/update-signing-key.pem" -outform DER -out "$work/update-signing-key.der"
+          openssl pkey -in "$work/update-signing-key.pem" -pubout -outform DER -out "$work/update-public-key.der"
+          echo "RIVET_UPDATE_KEY_DER=$work/update-signing-key.der" >> "$GITHUB_ENV"
+          echo "RIVET_UPDATE_PUBLIC_DER=$work/update-public-key.der" >> "$GITHUB_ENV"
+
       # one shot: builds the host, packages, produces the perMachine MSI
       # (start-menu + desktop shortcuts) and the portable zip with family
-      # naming, plus SBOM/notices; --without-updates keeps FileBoundary's
-      # own update-channel format (rivet's signed manifest is not adopted).
-      # The unpacked app tree is deleted by rivet afterwards (the taskly
-      # 0.1.3 lesson), so the update manifest step re-extracts it from the
-      # portable zip.
-      - name: Release build (MSI + portable + SBOM + notices)
+      # naming, plus SBOM/notices AND the signed update manifest
+      # dist/update-stable.json (ADR-0011). The unpacked app tree is deleted
+      # by rivet afterwards (the taskly 0.1.3 lesson), so the portable zip
+      # post-processing step re-extracts it.
+      - name: Release build (MSI + portable + signed update manifest)
         shell: pwsh
+        env:
+          RIVET_UPDATE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/v${{ env.VERSION }}
+          RIVET_UPDATE_PRIVATE_KEY: ${{ env.RIVET_UPDATE_KEY_DER }}
+          RIVET_UPDATE_KEY_ID: fileboundary-2026-11
         run: |
-          raco rivet release --development --without-updates
+          raco rivet release --development
           if ($LASTEXITCODE -ne 0) { throw "FileBoundary release build failed" }
           $msi = Get-ChildItem dist -Filter "fileboundary-$($env:VERSION)-windows-x64.msi"
           if (!$msi) { throw "MSI missing from rivet release output: dist/$(Get-ChildItem dist -Name | Out-String)" }
+          if (!(Test-Path "dist/update-stable.json")) { throw "signed update manifest missing: dist/update-stable.json" }
           Write-Output "rivet release produced: $((Get-ChildItem dist -File).Name -join ', ')"
 
       - name: Build release artifacts
@@ -112,18 +136,32 @@ jobs:
           if (!(Test-Path (Join-Path $appDir 'RivetHost.exe'))) { throw "unexpected portable zip layout: no fileboundary-windows-x64/ top directory" }
           # attribution notice travels in the portable zip (the smoke asserts it)
           Copy-Item -LiteralPath THIRD_PARTY_NOTICES.md -Destination (Join-Path $appDir 'THIRD_PARTY_NOTICES.md')
-          # update-channel full package + release manifest (ADR-0008)
-          python tools/make_update_manifest.py --dir $appDir --version $version --commit $env:SHORT_SHA --out dist/release --channel stable --package-url-base "https://github.com/${{ github.repository }}/releases/download/v$version/"
-          if ($LASTEXITCODE -ne 0) { throw "update manifest failed" }
+          # signed update feed rides into the release set (ADR-0011) before
+          # the checksum sweep so it gets its .sha256 sidecar too
+          Copy-Item -LiteralPath dist/update-stable.json -Destination dist/release/
           # discoverability portable zip (ADR-0010): family naming, single
           # top-level directory, README + launcher injected, deterministic
           # timestamps; also writes SHA256SUMS.txt + per-file sidecars for
-          # every asset already in dist/release (MSI, tarball, full package,
-          # manifest)
+          # every asset already in dist/release (MSI, tarball, feed)
           pwsh tools/make_portable_zip.ps1 -AppDir $appDir -Version $version -OutDir dist/release `
             -ExtraDir tools/portable
           if ($LASTEXITCODE -ne 0) { throw "portable packaging failed" }
           Get-ChildItem dist/release | Format-Table Name, Length
+
+      # offline parity gate: the feed's signature verifies against the
+      # release key's public half, and every artifact URL resolves to a
+      # present local file with exact size + SHA-256 (docs/update-contract.md)
+      - name: Verify signed update manifest parity
+        shell: pwsh
+        run: |
+          raco rivet verify-release-assets --manifest dist/release/update-stable.json `
+            --public-key "${{ env.RIVET_UPDATE_PUBLIC_DER }}" `
+            --key-id fileboundary-2026-11 `
+            --application-id dev.turlamai.fileboundary `
+            --base-url "https://github.com/${{ github.repository }}/releases/download/v$($env:VERSION)/" `
+            --dir dist/release `
+            --require windows:x64:msi --require windows:x64:zip
+          if ($LASTEXITCODE -ne 0) { throw "signed update manifest parity check failed" }
 
       - name: Smoke test the artifacts
         shell: pwsh
@@ -133,8 +171,7 @@ jobs:
           pwsh tools/release_smoke.ps1 -Version $env:VERSION -SourceDir . `
             -PortableZip "dist/release/fileboundary-$($env:VERSION)-windows-x64.zip" `
             -MsiPath "dist/release/fileboundary-$($env:VERSION)-windows-x64.msi" `
-            -FullPackage "dist/release/fileboundary-$($env:VERSION)-windows-x64-update.zip" `
-            -Manifest "dist/release/manifest.json"
+            -UpdateManifest "dist/release/update-stable.json"
           if ($LASTEXITCODE -ne 0) { throw "release smoke failed" }
 
       - name: Write release notes
@@ -145,13 +182,13 @@ jobs:
           $notes = @'
           # FileBoundary v__VERSION__
 
-          Windows-native file encryption diagnostics and adversarial recovery toolkit. Local-first; every network access is an explicit operator-initiated update command (ADR-0008, revised by ADR-0010 for the MSI install face).
+          Windows-native file encryption diagnostics and adversarial recovery toolkit. Local-first: no background traffic and no telemetry; the only network access is the self-update feed (silent throttled launch check, off-switchable; every download and install is explicitly confirmed). Update channel per ADR-0011 / docs/update-contract.md.
 
           ## What shipped
 
           - **Windows installer** (`fileboundary-__VERSION__-windows-x64.msi`): per-machine install with Start-menu and desktop shortcuts - the recommended way to install.
           - Portable Windows x86_64 application (`fileboundary-__VERSION__-windows-x64.zip`): self-contained WinUI 3 host - no Racket or runtime prerequisite; unpack anywhere, read the README.txt inside, run `RivetHost.exe` (or `FileBoundary.cmd`).
-          - Update channel: `manifest.json` + full package zip for the explicit `update check` / `update now` / `update apply` commands into `%LOCALAPPDATA%\FileBoundary`.
+          - Signed update feed (`update-stable.json`): Ed25519-signed rivet update manifest; the GUI checks, downloads (with progress and cancel), and installs in-app after an explicit consent.
           - Source distribution (`FileBoundary-v__VERSION__-source.tar.gz`): headless CLI (`racket src/cli.rkt`) requiring Racket CS 9.3 - the normative, agent-facing interface.
           - `SHA256SUMS.txt` and per-file `.sha256` for every artifact.
 
@@ -162,7 +199,8 @@ jobs:
           ## Verified
 
           - Full test suite green on Windows x64 ([run](__RUN_URL__)).
-          - Packaging smoke passed on the artifacts of this run: portable layout (single top-level directory, README, launcher), GUI boot probe, MSI silent install with Start-menu shortcut + clean uninstall, CLI version/doctor envelopes, update-apply into a clean install root.
+          - Packaging smoke passed on the artifacts of this run: portable layout (single top-level directory, README, launcher), GUI boot probe, MSI silent install with Start-menu shortcut + clean uninstall, CLI version/doctor envelopes.
+          - Signed update feed verified offline (signature against the release key, per-asset size + SHA-256 parity) before publication.
 
           ## Known limitations
 
@@ -178,7 +216,7 @@ jobs:
 
           ## Update
 
-          `racket src/cli.rkt update check` / `update now` against this release's `manifest.json`.
+          Installed copies check for updates automatically (every 4 hours at most, off-switchable in the update panel) or via the manual `检查更新` button; downloads and installs run in-app after your explicit confirmation. CLI: `racket src/cli.rkt update check` / `update now` (requires the `rivet` Racket package for the signed feed).
           '@
           $runUrl = "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           $notes = $notes.Replace('__VERSION__', $env:VERSION).Replace('__RUN_URL__', $runUrl)

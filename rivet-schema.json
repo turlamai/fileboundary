@@ -91,16 +91,63 @@
       }
     },
     {
+      "arguments": [],
+      "name": "update-check",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "arguments": [],
+      "name": "update-download",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
       "arguments": [
         {
-          "name": "manifest",
+          "name": "key",
           "type": {
             "kind": "scalar",
             "name": "String"
           }
         }
       ],
-      "name": "update-check-summary",
+      "name": "update-settings-get",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "arguments": [
+        {
+          "name": "key",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        },
+        {
+          "name": "value",
+          "type": {
+            "kind": "scalar",
+            "name": "String"
+          }
+        }
+      ],
+      "name": "update-settings-set",
+      "result": {
+        "kind": "scalar",
+        "name": "String"
+      }
+    },
+    {
+      "arguments": [],
+      "name": "update-state",
       "result": {
         "kind": "scalar",
         "name": "String"

@@ -301,21 +301,53 @@
                             </ScrollViewer>
                         </Grid>
 
-                        <!--  update check panel  -->
+                        <!--  update panel (docs/update-contract.md): silent
+                              throttled launch check + manual check, in-app
+                              download with cancel, quit-and-install handoff  -->
                         <Grid x:Name="PanelUpdate" Visibility="Collapsed">
                             <ScrollViewer Padding="36,20,36,12">
                                 <StackPanel MaxWidth="680" Spacing="14"
                                             HorizontalAlignment="Left">
                                     <TextBlock Text="检查更新" FontSize="24"
                                                FontWeight="SemiBold" />
+                                    <TextBlock x:Name="UpdateCurrentVersionText"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               Text="当前版本：读取中…" />
+                                    <CheckBox x:Name="UpdateAutoCheckToggle"
+                                              Content="启动时自动检查更新（每 4 小时最多一次）"
+                                              IsChecked="True"
+                                              Checked="UpdateAutoCheck_Toggled"
+                                              Unchecked="UpdateAutoCheck_Toggled"
+                                              IsEnabled="False"
+                                              AutomationProperties.AutomationId="update-auto-check-toggle" />
                                     <TextBlock TextWrapping="Wrap"
                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                               Text="检查 GitHub Releases 上是否有新版本。仅在你点击按钮时访问网络，不会自动更新或上传任何数据。" />
+                                               Text="启动后会静默检查 GitHub Releases 上的新版本（可用上方开关关闭），也可在此手动检查。更新包先下载并通过校验，经你确认后再安装；安装失败会自动保留原版本。" />
                                     <Button x:Name="UpdateCheckButton" Content="检查更新"
                                             Style="{ThemeResource AccentButtonStyle}"
                                             HorizontalAlignment="Left" Margin="0,4,0,0"
                                             IsEnabled="False" Click="UpdateCheck_Click"
                                             AutomationProperties.AutomationId="update-check-button" />
+                                    <InfoBar x:Name="UpdateDownloadBar"
+                                             Severity="Informational"
+                                             Title="正在下载更新…"
+                                             IsOpen="False" IsClosable="False">
+                                        <InfoBar.Content>
+                                            <StackPanel Orientation="Horizontal"
+                                                        Spacing="10" Margin="0,4,0,0">
+                                                <ProgressRing x:Name="UpdateDownloadProgress"
+                                                              Width="28" Height="28"
+                                                              IsIndeterminate="True" />
+                                                <TextBlock x:Name="UpdateDownloadPercentText"
+                                                           VerticalAlignment="Center"
+                                                           Text="" />
+                                                <Button x:Name="UpdateDownloadCancelButton"
+                                                        Content="取消下载"
+                                                        Click="UpdateCancel_Click" />
+                                            </StackPanel>
+                                        </InfoBar.Content>
+                                    </InfoBar>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>

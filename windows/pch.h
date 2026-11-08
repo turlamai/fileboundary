@@ -27,6 +27,7 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <functional>
 #include <utility>
 
 #include "../runtime/backend.hpp"

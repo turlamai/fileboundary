@@ -31,8 +31,14 @@ struct MainWindow : MainWindowT<MainWindow> {
                      Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void Twin_Click(winrt::Windows::Foundation::IInspectable const& sender,
                   Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  // Update panel actions (flow lives in MainWindow.Update.cpp).
   void UpdateCheck_Click(winrt::Windows::Foundation::IInspectable const& sender,
                          Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  void UpdateCancel_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                          Microsoft::UI::Xaml::RoutedEventArgs const& args);
+  void UpdateAutoCheck_Toggled(
+      winrt::Windows::Foundation::IInspectable const& sender,
+      Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
   // Navigation + file pickers + result copy.
   void Nav_SelectionChanged(
@@ -81,20 +87,50 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunVerifyAsync();
   void RunDecryptAsync();
   void RunTwinAsync();
-  void RunUpdateCheckAsync();
   void SetBusyUi(bool busy);
   void ShowPanel(std::wstring const& tag);
   void ShowDecryptResult(std::string const& json);
-  void ShowUpdateCheckResult(std::string const& json);
   void ShowTwinResult(std::string const& json);
   void ShowFailed(std::string const& what);
   void SetReadyUi();
   void SetErrorUi(std::string const& message);
 
+  // Online update flow (MainWindow.Update.cpp, update contract).
+  winrt::fire_and_forget AutoCheckUpdatesAsync();
+  void RunSilentUpdateCheck();
+  void RunUpdateCheck(bool silent);
+  void ContinueUpdateCheck(bool silent);
+  void HandleUpdateCheckResult(std::string const& check_json,
+                               std::string const& failure, bool silent);
+  void StartDownload();
+  void PollUpdateState(
+      std::shared_ptr<rivet::windows::Backend> const& backend);
+  void HandleUpdatePoll(std::string const& json);
+  void FailDownload(std::string const& message);
+  winrt::fire_and_forget ShowInstallConsent(std::wstring const& path);
+  void InstallDownloadedUpdate(std::wstring const& update_path);
+  void HandleInstallMarkers();
+  bool IsDevCopy();
+  bool IsMsiInstall();
+  winrt::fire_and_forget ShowUpdateDialog(
+      std::wstring const& title, std::wstring const& body,
+      std::wstring const& primary_button, std::wstring const& close_button,
+      std::function<void()> on_primary,
+      std::wstring const& copy_button = L"");
+  void LoadAutoCheckUpdatesSetting();
+  void RefreshUpdateVersionLabel();
+  void SaveUpdateSetting(std::wstring const& key, std::wstring const& value);
+
   std::shared_ptr<rivet::windows::Backend> backend_;
   winrt::hstring last_result_text_;
   // Elevation blocks Explorer drag-drop (UIPI); surfaced in SetReadyUi.
   bool running_elevated_ = false;
+  // Update flow state: one active download, its start time (the host-side
+  // 30-min watchdog), the auto-check toggle, and the progress poll timer.
+  bool update_downloading_ = false;
+  std::int64_t update_download_start_ = 0;
+  bool auto_check_updates_ = true;
+  winrt::Microsoft::UI::Xaml::DispatcherTimer update_timer_{nullptr};
 };
 
 }  // namespace winrt::RivetHost::implementation

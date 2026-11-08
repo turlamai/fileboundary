@@ -10,16 +10,13 @@
          "engine/inventory.rkt"
          "engine/diagnostics.rkt"
          "engine/recovery.rkt"
-         "engine/update.rkt"
+         (prefix-in upd: "../app/update.rkt")
          "engine/decrypt.rkt"
          "version.rkt")
 
 (provide run-cli)
 
 (define schema-version "1.0")
-(define default-manifest-url
-  "https://github.com/turlamai/fileboundary/releases/latest/download/manifest.json")
-
 
 (define (coded code message)
   (hash 'code code 'message message))
@@ -27,7 +24,7 @@
 (define (bad-usage)
   (values 2 "error" (hash) '()
           (list (coded "invalidArguments"
-                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE --pad PATH | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--manifest URL|PATH] | update now [--manifest URL|PATH] [--root DIR] | update apply --package PATH --manifest PATH [--url] [--root DIR]."))))
+                       "Commands: version | doctor | scan <path> [--max-files N] | verify --original <file> --exported <file> [--trusted-plaintext-sha256 HEX] | decrypt --in FILE --out FILE --pad PATH | pad twin --plain FILE --cipher FILE --out FILE [--pad PATH] | update status | update check [--feed URL] | update now [--feed URL]."))))
 
 ;; decrypt: OOXML first (its CD is findable), fall back to the PDF path
 (define (run-decrypt in-path out-path pad-path)
@@ -300,9 +297,12 @@
                  (bad-usage)))]
           [else (bad-usage)]))))
 
-;; update subcommand: status | check | apply. Network use is explicit:
-;; check hits the manifest URL only when asked (default channel URL),
-;; apply reads local files unless --url is given for the package.
+;; update subcommand: status | check | now. The channel is the Ed25519
+;; signed rivet feed (ADR-0011, docs/update-contract.md): the CLI verifies
+;; the signature before parsing, downloads with size/SHA-256 verification,
+;; and never installs — installation is host-owned (the GUI's
+;; quit-and-install handoff). `update apply` was retired together with the
+;; SHA-256-only channel it belonged to.
 (define (update-command rest)
   (if (null? rest)
       (bad-usage)
@@ -311,72 +311,56 @@
           [(equal? sub "status")
            (values 0 "ok"
                    (hash 'runningVersion product-version
-                         'installedVersion (installed-version
-                                            (default-install-root))
-                         'installRoot (default-install-root))
+                         'installFlavor (upd:setting-ref "install-flavor")
+                         'autoCheckUpdates (upd:setting-ref "auto-check-updates" "1")
+                         'feed upd:default-feed-url)
                    '() '())]
           [(equal? sub "check")
-           (let-values ([(_pos flags)
-                         (split-flags args '("--manifest"))])
-             (define source (or (hash-ref flags "--manifest" (lambda () #f))
-                                default-manifest-url))
-             (define manifest (fetch-manifest source))
-             (define result (check-update manifest product-version))
-             (define available? (equal? (hash-ref result 'action) "update"))
+           (let-values ([(_pos flags) (split-flags args '("--feed"))])
+             (define feed (or (hash-ref flags "--feed" (lambda () #f))
+                              upd:default-feed-url))
+             (unless (string-prefix? feed "https://")
+               (error 'update-check "the update feed must be an https URL"))
+             (define r (upd:updater-check! (upd:make-app-updater #:feed-url feed)))
              (values 0 "ok"
-                     (hash 'updateAvailable available?
-                           'currentVersion (hash-ref result 'currentVersion)
-                           'latestVersion (hash-ref result 'latestVersion)
-                           'package (hash-ref result 'package (lambda () (hash)))
-                           'deltas (hash-ref result 'deltas (lambda () '())))
+                     (hash 'updateAvailable
+                           (equal? (hash-ref r 'status) "available")
+                           'currentVersion
+                           (hash-ref r 'currentVersion product-version)
+                           'availableVersion
+                           (hash-ref r 'availableVersion (lambda () ""))
+                           'installer (hash-ref r 'installer (lambda () ""))
+                           'sizeBytes (hash-ref r 'sizeBytes (lambda () 0)))
                      '() '()))]
           [(equal? sub "now")
-           (let-values ([(_ flags)
-                         (split-flags args '("--manifest" "--root"))])
-             (define manifest-src
-               (or (hash-ref flags "--manifest" (lambda () #f))
-                   default-manifest-url))
-             (define root (or (hash-ref flags "--root" (lambda () #f))
-                              (default-install-root)))
-             (define r (update-now! manifest-src root))
-             (if (equal? (hash-ref r 'action) "none")
-                 (values 0 "ok" r '() '())
-                 (values 0 "ok" r '() '())))]
-          [(equal? sub "apply")
-           (let-values ([(_ flags) (split-flags args '("--package" "--manifest" "--root" "--url"))])
-             (define package (hash-ref flags "--package" (lambda () #f)))
-             (define manifest-src (hash-ref flags "--manifest" (lambda () #f)))
-             (define url (hash-ref flags "--url" (lambda () #f)))
-             (define root (or (hash-ref flags "--root" (lambda () #f))
-                              (default-install-root)))
-             (cond
-               [(not package)
-                (bad-usage)]
-               [(and url (not (or (string-prefix? url "https://")
-                                  (string-prefix? url "http://"))))
-                (values 2 "error" (hash) '()
-                        (list (coded "invalidArguments"
-                                     "--url must be an http(s) URL.")))]
-               [(not manifest-src)
-                (bad-usage)]
-               [else
-                (define manifest (fetch-manifest manifest-src))
-                (define pkg-meta (hash-ref manifest 'package))
-                (define tmp (make-temporary-file "fb-pkg-~a.zip"))
-                (dynamic-wind
-                  (lambda ()
-                    (if url
-                        (download-file! url tmp)
-                        (copy-file package tmp #:exists-ok? #t)))
-                  (lambda ()
-                    (define version (apply-package tmp pkg-meta root))
-                    (values 0 "ok"
-                            (hash 'appliedVersion version
-                                  'kind (hash-ref pkg-meta 'kind)
-                                  'root root)
-                            '() '()))
-                  (lambda ()
-                    (with-handlers ([exn:fail? void]) (delete-file tmp))))]))]
+           (let-values ([(_ flags) (split-flags args '("--feed"))])
+             (define feed (or (hash-ref flags "--feed" (lambda () #f))
+                              upd:default-feed-url))
+             (unless (string-prefix? feed "https://")
+               (error 'update-check "the update feed must be an https URL"))
+             (define updater (upd:make-app-updater #:feed-url feed))
+             (define r (upd:updater-check! updater))
+             (if (equal? (hash-ref r 'status) "available")
+                 (let ([final
+                        (begin
+                          (upd:updater-download! updater)
+                          (or (upd:updater-wait updater)
+                              (upd:updater-state updater)))])
+                   (values 0 "ok"
+                           (hash 'action "downloaded"
+                                 'previousVersion product-version
+                                 'availableVersion
+                                 (hash-ref final 'availableVersion
+                                           (lambda () ""))
+                                 'downloadedPath
+                                 (hash-ref final 'downloadedPath
+                                           (lambda () "")))
+                           '() '()))
+                 (values 0 "ok"
+                         (hash 'action "none"
+                               'status (hash-ref r 'status "error")
+                               'currentVersion product-version)
+                         '() '())))]
           [else (bad-usage)]))))
 
 (define (run-cli args)
