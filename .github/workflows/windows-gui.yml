@@ -29,10 +29,10 @@ jobs:
           distribution: full
           variant: CS
           version: "9.3"
-      - name: Install pinned Rivet v0.13.0
+      - name: Install pinned Rivet v0.14.0
         shell: pwsh
         run: |
-          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.13.0'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.14.0'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
       - name: Check native Windows toolchain
         shell: pwsh
