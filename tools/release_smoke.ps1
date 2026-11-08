@@ -104,7 +104,7 @@ try {
   $feed = Get-Content -LiteralPath $UpdateManifest -Raw | ConvertFrom-Json
   Assert-True ($feed.schema -eq 1) "feed wrapper schema: $($feed.schema)"
   Assert-True ($feed.signature.algorithm -eq 'ed25519') "feed signature algorithm: $($feed.signature.algorithm)"
-  Assert-True (![string]::IsNullOrEmpty($feed.signature.keyId)) "feed signature keyId missing"
+  Assert-True (![string]::IsNullOrEmpty($feed.signature.key_id)) "feed signature key_id missing"
   Assert-True (![string]::IsNullOrEmpty($feed.payload)) "feed payload missing"
   $inner = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($feed.payload)) | ConvertFrom-Json
   Assert-True ($inner.version -eq $Version) "feed inner version '$($inner.version)' does not match release $Version"
