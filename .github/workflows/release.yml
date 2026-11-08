@@ -161,7 +161,7 @@ jobs:
             --public-key "${{ env.RIVET_UPDATE_PUBLIC_DER }}" `
             --key-id fileboundary-2026-11 `
             --application-id dev.turlamai.fileboundary `
-            --base-url "https://github.com/${{ github.repository }}/releases/download/v$($env:VERSION)/" `
+            --base-url "https://github.com/${{ github.repository }}/releases/download/v$($env:VERSION)" `
             --dir dist/release `
             --require windows:x64:msi --require windows:x64:zip
           if ($LASTEXITCODE -ne 0) { throw "signed update manifest parity check failed" }
