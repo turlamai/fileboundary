@@ -32,6 +32,7 @@
          verify-entry
          rebuild-ooxml-bytes
          decrypt-ooxml
+         decrypt-zip
          decrypt-pdf
          salvage-objects
          extract-objstm
@@ -163,9 +164,12 @@
 ;; 4-7 read as a plausible unix timestamp instead, so the header
 ;; layout differs — but the family signature (bytes 1-3) is intact
 ;; and the body encryption is expected to follow the same policy pad.
-;; parse-wrapper accepts both and lets the body pipeline validate.
+;; `63 14 23 65` is variant C, seen in the field (2026-11-09): bytes
+;; 4-5 = 21, bytes 6-7 = 491, zone+tail = 512 — family-A geometry with
+;; a different first byte. parse-wrapper accepts all three and lets
+;; the body pipeline validate.
 (define wrapper-magics
-  (list #"\x62\x14\x23\x65" #"\x64\x14\x23\x65"))
+  (list #"\x62\x14\x23\x65" #"\x63\x14\x23\x65" #"\x64\x14\x23\x65"))
 
 (define (parse-wrapper ct)
   (unless (>= (bytes-length ct) 8)
@@ -292,20 +296,35 @@
 (define placeholder-xml-bytes
   (string->bytes/utf-8 "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<Properties/>"))
 
-(define (rebuild-ooxml-bytes s entries first-blob)
+(define (rebuild-ooxml-bytes s entries first-blob
+                             [replacements (hasheq)] [omit null])
+  ;; replacements: name-bytes -> plaintext bytes — the entry is emitted
+  ;; STORED (method 0) with recomputed crc/sizes (nested-decrypted
+  ;; content). omit: name-bytes dropped entirely (header-zone content
+  ;; that no longer exists in the file — plain-zip semantics).
+  (define kept
+    (for/list ([e (in-list entries)]
+               #:unless (member (hash-ref e 'name) omit))
+      e))
   (define first (car entries))
   (define out (open-output-bytes))
   (define offs (make-hash))
   (define pos 0)
   ;; per-entry resolved values, reused by the CD loop below
   (define resolved (make-hash))
-  (for ([e entries])
+  (for ([e kept])
     (define lho (hash-ref e 'lho))
     (define is-first (< lho 512))
     (define is-dir (zero? (hash-ref e 'csize)))
     (define name (hash-ref e 'name))
+    (define replacement (hash-ref replacements name #f))
     (define-values (data crc csize usize method)
       (cond
+        ;; nested-decrypted content: stored plaintext, recomputed gates
+        [replacement
+         (values replacement (crc32-bytes replacement)
+                 (bytes-length replacement) (bytes-length replacement)
+                 0)]
         ;; stripped first entry (classic layout): its data is the blob
         ;; found near offset 512 — identified by CD name match with the
         ;; entry at the surviving local header
@@ -351,7 +370,7 @@
                                    name data) out)
     (set! pos (+ pos 30 (bytes-length name) (bytes-length data))))
   (define cd-start pos)
-  (for ([e entries])
+  (for ([e kept])
     (define name (hash-ref e 'name))
     (define r (hash-ref resolved name))
     ;; full 46-byte CD record: a malformed stride (or a cd_size of 0)
@@ -379,24 +398,69 @@
   (define cd-size (- pos cd-start))
   (write-bytes (bytes-append #"PK\x05\x06"
                                  (u16->bytes 0) (u16->bytes 0)
-                                 (u16->bytes (length entries))
-                                 (u16->bytes (length entries))
+                                 (u16->bytes (length kept))
+                                 (u16->bytes (length kept))
                                  (u32->bytes cd-size)
                                  (u32->bytes cd-start)
                                  (u16->bytes 0)) out)
   (get-output-bytes out))
 
-(define (decrypt-ooxml ct pad)
-  ;; decrypt + verify every entry + reassemble a standalone OOXML file.
-  ;; Two measured E-SafeNet zip layouts:
-  ;;  - classic: first entry's local header is stripped, its deflate blob
-  ;;    survives near offset 512, later entries are intact
-  ;;  - header-zone variant: the first 512 bytes are ENCRYPTED and cover
-  ;;    the local headers (+ data) of the leading entries; the CD at the
-  ;;    tail survives. Those entries cannot be CRC-verified (their data
-  ;;    is gone) — they are rebuilt by rebuild-ooxml-bytes from their CD
-  ;;    records as stored (method 0) placeholder content: docProps
-  ;;    metadata, never document content.
+;; family magic sniff for entry payloads: any known wrapper variant
+(define (wrapped-bytes? b)
+  (and (>= (bytes-length b) 4)
+       (member (subbytes b 0 4) wrapper-magics) #t))
+
+(define content-types-marker (string->bytes/utf-8 "[Content_Types].xml"))
+;; hostile nesting guard: a zip inside a zip inside a zip …
+(define zip-depth-limit 4)
+
+(define (zip-container? s)
+  (with-handlers ([exn:fail? (lambda _ #f)])
+    (define-values (_e _entries _n) (find-cd s))
+    #t))
+
+;; decrypt one nested-wrapped entry payload to plaintext: containers
+;; recurse through decrypt-zip (bounded depth), PDFs go through the PDF
+;; pipeline, and anything else is an honest bounded failure — the
+;; output zip never ships a member that is still wrapped.
+(define (decrypt-nested-entry name-bytes inner-ct pad depth)
+  (define display-name (bytes->string/utf-8 name-bytes #\?))
+  (when (> (add1 depth) zip-depth-limit)
+    (error 'decrypt-zip
+           "nested archive depth exceeds ~a at ~a"
+           zip-depth-limit display-name))
+  (define inner-s (xor-pad inner-ct pad))
+  (cond
+    [(zip-container? inner-s)
+     (define r (decrypt-zip inner-ct pad (add1 depth)))
+     (values (hash-ref r 'bytes) (hash-ref r 'kind))]
+    [(with-handlers ([exn:fail? (lambda _ #f)])
+       (decrypt-pdf inner-ct pad))
+     => (lambda (r) (values (hash-ref r 'bytes) "pdf"))]
+    [else
+     (error 'decrypt-zip
+            "wrapped entry \"~a\": inner type is neither a zip container nor a PDF"
+            display-name)]))
+
+;; wrapped-zip container decryptor — the one machine behind the OOXML
+;; path too (an OOXML file IS a zip). Two measured E-SafeNet layouts:
+;;  - classic: first entry's local header is stripped, its deflate blob
+;;    survives near offset 512, later entries are intact
+;;  - header-zone variant: the first 512 bytes cover the local headers
+;;    (+ data) of the leading entries; the CD at the tail survives.
+;; Header-zone handling differs by flavor:
+;;  - 'ooxml (the measured OOXML layout): header-zone entries carry
+;;    docProps metadata, never document content — rebuilt as stored
+;;    placeholders, counted as rebuilt
+;;  - 'zip: header-zone directories survive as empty entries; header-zone
+;;    CONTENT bytes exist nowhere in the file (E-SafeNet restores them
+;;    only through its read-time driver), so they are reported as lost
+;;    and omitted — a corrupt placeholder would be worse than absence
+;; Entries whose plaintext starts with a wrapper magic are themselves
+;; E-SafeNet-wrapped files: they are decrypted in the same pass
+;; (nested containers recurse, bounded) and re-emitted as stored
+;; plaintext with recomputed CRC gates.
+(define (decrypt-zip ct pad [depth 0] [flavor #f])
   (define s (xor-pad ct pad))
   (define-values (_eocd entries _n) (find-cd s))
   (define first (car entries))
@@ -404,34 +468,77 @@
   (define blob
     (and first-pk
          (subbytes s (- first-pk (hash-ref first 'csize)) first-pk)))
+  (define resolved-flavor
+    (or flavor
+        (if (for/or ([e (in-list entries)])
+              (bytes-find (hash-ref e 'name) content-types-marker))
+            'ooxml
+            'zip)))
+  (define ooxml? (eq? resolved-flavor 'ooxml))
   (define verified 0)
   (define rebuilt-count 0)
+  (define replacements (make-hash))
+  (define lost-names null)
+  (define decrypted-inner 0)
   (define report
     (for/list ([e entries])
+      (define name-bytes (hash-ref e 'name))
+      (define display-name (bytes->string/utf-8 name-bytes #\?))
       (define in-header-zone (< (hash-ref e 'lho) 512))
-      (define-values (v rebuilt?)
+      (define is-dir (zero? (hash-ref e 'csize)))
+      (define-values (v rebuilt? lost? wrapped inner-kind)
         (cond
-          ;; header-zone entries cannot be CRC-verified (their local
-          ;; headers/data were overwritten) — they are rebuilt from CD
-          ;; records as stored placeholders and counted separately
+          ;; header-zone entries: local headers/data overwritten.
+          [(and in-header-zone (not ooxml?) (not is-dir))
+           ;; plain zip: the content bytes exist nowhere in the file
+           (set! lost-names (cons name-bytes lost-names))
+           (values #f #f #t #f #f)]
+          ;; OOXML measured layout: docProps metadata placeholders
           [in-header-zone
-           (values (hash 'ok #t 'rebuilt #t) #t)]
+           (values (hash 'ok #t 'rebuilt #t) #t #f #f #f)]
           [else
            (define v (verify-entry s e #f))
-           (values v #f)]))
-      (when (hash-ref v 'ok) (set! verified (add1 verified)))
+           (cond
+             [(not (hash-ref v 'ok)) (values v #f #f #f #f)]
+             [(wrapped-bytes? (hash-ref v 'data))
+              (define-values (plain inner-kind)
+                (decrypt-nested-entry name-bytes (hash-ref v 'data)
+                                      pad depth))
+              (hash-set! replacements name-bytes plain)
+              (set! decrypted-inner (add1 decrypted-inner))
+              (values (hash 'ok #t) #f #f #t inner-kind)]
+             [else (values v #f #f #f #f)])]))
+      (when (and v (hash-ref v 'ok)) (set! verified (add1 verified)))
       (when rebuilt? (set! rebuilt-count (add1 rebuilt-count)))
-      (hash 'name (bytes->string/utf-8 (hash-ref e 'name) #\?)
-            'crcOk (hash-ref v 'ok))))
-  (unless (= verified (length entries))
-    (error 'decrypt-ooxml
+      (hash 'name display-name
+            'crcOk (and v (hash-ref v 'ok))
+            'lost lost?
+            'wrapped wrapped
+            'innerKind inner-kind)))
+  ;; CRC failures on verifiable entries still mean the pad does not
+  ;; match; lost header-zone entries are expected and reported instead
+  (define failed (- (length entries) verified (length lost-names)))
+  (unless (zero? failed)
+    (error 'decrypt-zip
            "only ~a/~a entries verified; pad does not match this file"
            verified (length entries)))
   (hash 'entries report
         'verified verified
         'total (length entries)
         'rebuiltEntries rebuilt-count
-        'bytes (rebuild-ooxml-bytes s entries blob)))
+        'lostEntries
+        (reverse
+         (for/list ([n (in-list lost-names)])
+           (bytes->string/utf-8 n #\?)))
+        'decryptedInner decrypted-inner
+        'kind (if ooxml? "ooxml" "zip")
+        'bytes (rebuild-ooxml-bytes s entries blob
+                                    replacements lost-names)))
+
+;; compat entry point: the OOXML flavor with the original report shape
+;; (the returned hash is a superset of the old one)
+(define (decrypt-ooxml ct pad)
+  (decrypt-zip ct pad 0 'ooxml))
 
 ;; ---------- PDF rebuild ----------
 
@@ -1135,11 +1242,13 @@
                              'xrefChecked (hash-ref r 'xrefChecked)
                              'xrefBad (hash-ref r 'xrefBad)
                              'bytes (hash-ref r 'bytes)))])
-      (define r (decrypt-ooxml ct pad))
-      (hash 'kind "ooxml"
+      (define r (decrypt-zip ct pad))
+      (hash 'kind (hash-ref r 'kind)
             'entries (hash-ref r 'entries)
             'verified (hash-ref r 'verified)
             'total (hash-ref r 'total)
+            'lostEntries (hash-ref r 'lostEntries)
+            'decryptedInner (hash-ref r 'decryptedInner)
             'bytes (hash-ref r 'bytes))))
   (with-output-to-file out-path
     (lambda () (write-bytes (hash-ref result 'bytes)))

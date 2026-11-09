@@ -48,7 +48,7 @@ jobs:
       - name: Install pinned Rivet v0.14.0
         shell: pwsh
         run: |
-          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.14.0'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.15.0'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
 
       # rivet's MSI builder drives WiX 5 (the 7.x line aborts with WIX7015

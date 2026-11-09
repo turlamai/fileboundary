@@ -16,7 +16,7 @@ under the ADR-0006 mandate; nothing here mutates protection-system state.
 
 | Property | Value |
 |---|---|
-| Header magic | `62 14 23 65` + `E-SafeNet` + `LOCK` |
+| Header magic | `62 14 23 65` + `E-SafeNet` + `LOCK`; field variants keep bytes 1-3 and change byte 0: `64 14 23 65` (2026-11-06, bytes 4-7 read as a timestamp), `63 14 23 65` (2026-11-09, zone+tail = 512 like family A) |
 | Header bytes 4–5 (LE16) | size of the pre-body zone (docx 444, PDF 155, OS3 2013 sample 112) |
 | Header bytes 6–7 (LE16) | zone tail inside the first 512-block (docx 68, PDF 357, OS3 400); zone + tail = 512 always |
 | Body encryption | XOR with a **512-byte repeating pad** indexed by absolute file offset mod 512 |

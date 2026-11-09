@@ -34,7 +34,7 @@ jobs:
       # the CLI's update commands require the signed-update pipeline
       # (app/update.rkt -> rivet/distribution, ADR-0011); single-source pin
       - name: Install pinned Rivet v0.14.0
-        run: raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.14.0'
+        run: raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.15.0'
       - name: Compile headless engine and CLI
         run: raco make src/engine/inventory.rkt src/engine/diagnostics.rkt src/engine/summary.rkt src/engine/recovery.rkt src/cli.rkt app/update.rkt
       - name: Run real unit and contract tests

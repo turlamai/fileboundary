@@ -250,7 +250,8 @@
 ;; the user-facing failure profile end to end: the page leaves live in
 ;; an ObjStm whose dict is also written in the spaced form, so the
 ;; pre-fix engine neither matched the tree nor unfolded the stream
-(require file/gzip)
+(require file/gzip
+         file/zip)
 (define (adler32 bs)
   (define-values (a b)
     (for/fold ((a 1) (b 0))
@@ -330,3 +331,181 @@
                  (regexp-match? #rx"references 1 absent" truncated-msg)
                  (string-contains? truncated-msg "absent one(s): 3 ")
                  (regexp-match? #rx"truncated or pad covers only part" truncated-msg)))
+
+;; ---------- wrapped plain zip + nested entry decryption ----------
+
+;; field sample (variant C magic 63 14 23 65, 2026-11-09): the whole
+;; archive is wrapped, two leading entries live in the header zone —
+;; the BOM directory survives empty and the BOM xlsx content exists
+;; nowhere in the file (E-SafeNet restores it through its read-time
+;; driver, so it is reported lost instead of shipped corrupt)
+(define zip-fixture
+  (decrypt-zip (file->bytes (build-path fixtures-dir
+                                        "esafenet-wrapped-zip-archive.zip"))
+               pad))
+(check-equal? (hash-ref zip-fixture 'kind) "zip")
+(check-equal? (hash-ref zip-fixture 'total) 8)
+(check-equal? (hash-ref zip-fixture 'verified) 7)
+(check-equal? (length (hash-ref zip-fixture 'lostEntries)) 1)
+(check-equal? (hash-ref zip-fixture 'decryptedInner) 0)
+
+;; the output zip reads back cleanly: 5 content files, every .pdf a
+;; real PDF (the GBK entry names travel as raw bytes and are preserved)
+(define zip-out (make-temporary-file "fb-zipd~a.zip"))
+(with-output-to-file zip-out
+  (lambda () (write-bytes (hash-ref zip-fixture 'bytes))) #:exists 'replace)
+(define entry-count 0)
+(define pdf-ok #f)
+(call-with-input-file zip-out
+  (lambda (in)
+    (unzip in
+           (lambda (name is-dir? port)
+             (unless is-dir? (set! entry-count (add1 entry-count)))
+             (when (and (not is-dir?) (regexp-match? #rx#"[.]pdf$" name))
+               (set! pdf-ok
+                     (equal? (read-bytes 4 port) #"%PDF")))))))
+(check-equal? entry-count 5)
+(check-true pdf-ok)
+(delete-file zip-out)
+
+;; ---------- synthetic nesting (variant C geometry) ----------
+
+;; the measured wrapper geometry: a 512-byte wrapper header (variant C
+;; magic + zone fields + E-SafeNet marker) replaces the file's first
+;; 512 bytes; the body from 512 on is the original bytes, which xor-pad
+;; recovers exactly
+(define (seeded-random! _rg)
+  ;; deterministic filler geometry: the tests assert structural facts
+  ;; (which entries land in the header zone), not PRNG output
+  (random-seed 20261109))
+
+(define (wrap-variant-c plain)
+  ;; the measured model: the WHOLE file is first XOR-encrypted with the
+  ;; pad, then the wrapper header replaces the first 512 bytes — the
+  ;; synthesized ciphertext is head(512) + (xor-pad plain)[512:]
+  (define head (make-bytes 512))
+  (bytes-copy! head 0 #"\x63\x14\x23\x65" 0 4)
+  (bytes-set! head 4 21)   ; zone = 21 (le16)
+  (bytes-set! head 6 235)  ; tail = 491 (le16) → zone+tail = 512
+  (bytes-set! head 7 1)
+  (for ([i (in-range 12 21)])
+    (bytes-set! head i (char->integer (string-ref "E-SafeNet" (- i 12)))))
+  (bytes-append head (subbytes (xor-pad plain pad) 512)))
+
+;; a zip with one 2 KiB incompressible filler entry (which lands in the
+;; header zone and is therefore lost) plus one named payload entry;
+;; names are stored RELATIVE (file/zip archives the paths as given) and
+;; zipping runs under the work directory so names stay clean
+(define (make-two-entry-zip payload-name payload-bytes work-tag)
+  (define d (build-path (find-system-path 'temp-dir)
+                        (string-append "fb-zipnest-" work-tag)))
+  (make-directory* d)
+  (define filler (build-path d "dummy.bin"))
+  ;; incompressible filler: constant bytes would deflate to a few dozen
+  ;; bytes and pull every later local header into the header zone
+  (define rnd (make-bytes 2048))
+  (seeded-random! #f)
+  (for ([i (in-range 2048)])
+    (bytes-set! rnd i (random 256)))
+  (call-with-output-file filler
+    (lambda (out) (write-bytes rnd out)) #:exists 'truncate)
+  (define payload (build-path d payload-name))
+  (call-with-output-file payload
+    (lambda (out) (write-bytes payload-bytes out)) #:exists 'truncate)
+  (define z (build-path d "archive.zip"))
+  (with-handlers ([exn:fail? void]) (delete-file z))
+  (parameterize ([current-directory d])
+    (zip z "dummy.bin" payload-name))
+  (file->bytes z))
+
+;; inner zip A: filler + payload.txt → wrapped variant C
+(define inner-zip-plain
+  (make-two-entry-zip "payload.txt" (string->bytes/utf-8 "nested payload 42")
+                      "a"))
+(define inner-zip-wrapped (wrap-variant-c inner-zip-plain))
+
+;; inner PDF: the real decrypted courseware output, wrapped variant C
+(define inner-pdf-wrapped
+  (wrap-variant-c (hash-ref pdf 'bytes)))
+
+;; outer zip B: filler + note.txt + the two wrapped inner files →
+;; wrapped variant C on top
+(define nest-dir (build-path (find-system-path 'temp-dir) "fb-zipnest-b"))
+(make-directory* nest-dir)
+(define (write-member name bytes)
+  (call-with-output-file (build-path nest-dir name)
+    (lambda (out) (write-bytes bytes out)) #:exists 'truncate))
+(define outer-rnd (make-bytes 2048))
+(seeded-random! #f)
+(for ([i (in-range 2048)])
+  (bytes-set! outer-rnd i (random 256)))
+(write-member "dummy.bin" outer-rnd)
+(write-member "note.txt" (string->bytes/utf-8 "outer note"))
+(write-member "first.pdf" inner-pdf-wrapped)
+(write-member "second.zip" inner-zip-wrapped)
+(define outer-zip-path (build-path nest-dir "outer.zip"))
+(with-handlers ([exn:fail? void]) (delete-file outer-zip-path))
+(parameterize ([current-directory nest-dir])
+  (zip outer-zip-path "dummy.bin" "note.txt" "first.pdf" "second.zip"))
+(define outer-wrapped
+  (wrap-variant-c (file->bytes outer-zip-path)))
+
+(define nested
+  (decrypt-zip outer-wrapped pad))
+(check-equal? (hash-ref nested 'kind) "zip")
+(check-equal? (hash-ref nested 'decryptedInner) 2)
+(check-equal? (length (hash-ref nested 'lostEntries)) 1)  ; the filler
+
+;; read the decrypted zip back: the plain note survives verbatim and the
+;; two nested-wrapped members come out as their ORIGINAL plaintexts
+(define nest-out (make-temporary-file "fb-zipn~a.zip"))
+(with-output-to-file nest-out
+  (lambda () (write-bytes (hash-ref nested 'bytes))) #:exists 'replace)
+(define members (make-hash))
+(call-with-input-file nest-out
+  (lambda (in)
+    (unzip in
+           (lambda (name is-dir? port)
+             (unless is-dir?
+               (hash-set! members name (port->bytes port)))))))
+(check-equal? (hash-ref members #"note.txt") #"outer note")
+(check-equal? (hash-ref members #"first.pdf") (hash-ref pdf 'bytes))
+;; the nested pass on second.zip must equal a direct decrypt of the
+;; same wrapped bytes (whose own header-zone filler is lost there)
+(check-equal?
+ (hash-ref members #"second.zip")
+ (hash-ref (decrypt-zip inner-zip-wrapped pad) 'bytes))
+(delete-file nest-out)
+
+;; depth guard: the innermost level is a plain (unwrapped) zip, so a
+;; 4-deep chain still decrypts, while 6 wraps exceed the bounded limit
+(define (nest-n-times bytes n)
+  ;; each level is a two-entry wrapped zip: the filler soaks up the
+  ;; header zone so the inner.zip entry survives past offset 512
+  (for/fold ([b bytes]) ([i (in-range n)])
+    (wrap-variant-c
+     (make-two-entry-zip (format "l~a.zip" i) b (format "d~a" i)))))
+(check-not-false
+ (decrypt-zip (nest-n-times inner-zip-wrapped 4) pad))
+(check-exn
+ exn:fail?
+ (lambda () (decrypt-zip (nest-n-times inner-zip-wrapped 6) pad)))
+
+;; a wrapped payload that is neither a zip container nor a PDF fails
+;; loudly with the entry name, instead of shipping still-wrapped bytes
+(define wrapped-txt
+  (wrap-variant-c
+   (string->bytes/utf-8
+    (string-append "plain text payload " (make-string 600 #\x)))))
+(check-exn
+ exn:fail?
+ (lambda ()
+   (decrypt-zip (wrap-variant-c
+                 (make-two-entry-zip "notes.bin" wrapped-txt "t"))
+                pad)))
+(check-exn
+ #px"notes[.]bin"
+ (lambda ()
+   (decrypt-zip (wrap-variant-c
+                 (make-two-entry-zip "notes.bin" wrapped-txt "t2"))
+                pad)))

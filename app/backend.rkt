@@ -46,12 +46,17 @@
              'xrefBad (hash-ref report 'xrefBad)
              'output out-name))
       (jsexpr->string
-       (hash 'kind "ooxml"
+       (hash 'kind (hash-ref report 'kind)
              'verified (hash-ref report 'verified)
              'total (hash-ref report 'total)
+             'lostCount (length (hash-ref report 'lostEntries '()))
+             'decryptedInner (hash-ref report 'decryptedInner 0)
              'entries (for/list ([e (in-list (hash-ref report 'entries '()))])
                         (hash 'name (hash-ref e 'name)
-                              'crcOk (hash-ref e 'crcOk)))
+                              'crcOk (hash-ref e 'crcOk)
+                              'lost (hash-ref e 'lost #f)
+                              'wrapped (hash-ref e 'wrapped #f)
+                              'innerKind (hash-ref e 'innerKind #f)))
              'output out-name))))
 
 ;; pad twin: the GUI panel delegates to the same engine entry as

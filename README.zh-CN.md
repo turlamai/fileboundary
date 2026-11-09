@@ -8,7 +8,7 @@
 
 **v0.2.0 已发布** —— 对抗恢复核心已在无界面 CLI 上产品化（[发布页](https://github.com/turlamai/fileboundary/releases/tag/v0.2.0)）。按工程宪章的三层如实记账：
 
-- **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头重建 + xref 抽查）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
+- **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头重建 + xref 抽查）、wrapped 普通 zip 档案（逐条目 CRC 验证，内部带壳文件同一遍解密，无法离线恢复的头区条目以 lostEntries 报告）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
 - **已实现、本机已验证**：完整测试套件（194 项 + JSON Schema 契约校验）在 Windows 全绿，含三个 pin 定真实样本的端到端解密（[ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)）。CI 运行暂被账号账单阻塞——恢复前合并门禁由审查执行。
 - **发布列车**（[#9](https://github.com/turlamai/fileboundary/issues/9)、[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）：打 tag 触发 [release 工作流](.github/workflows/release.yml)，构建便携包、自更新全量包 + `manifest.json`、源码包、`SHA256SUMS.txt` 与逐文件校验和，对产物做冒烟（净目录解压、GUI 启动探针、CLI 信封、净安装根 update-apply），并以英文说明发布私有 Release。按 ADR-0010（修订 ADR-0008），**MSI 为主要安装面**；便携 zip 与显式自更新命令继续保留。
 - GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。
