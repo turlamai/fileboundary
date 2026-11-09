@@ -753,6 +753,44 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
                 L"\n全部组成部分校验通过，输出文件可以直接打开。原始文件未被改动。"
           : L"输出文件：" + std::wstring{winrt::to_hstring(output).c_str()} +
                 L"\n有组成部分未通过校验，请勿使用该输出文件。";
+    } else if (kind == L"zip") {
+      // plain-zip archive report: verified counts, LOST entries are the
+      // headline (they are absent from the output zip and the user must
+      // know which files to fetch from the source machine), nested
+      // decryption gets a line when it happened
+      auto const verified = static_cast<int>(obj.GetNamedNumber(L"verified"));
+      auto const total = static_cast<int>(obj.GetNamedNumber(L"total"));
+      auto const lost_count = static_cast<int>(obj.GetNamedNumber(L"lostCount"));
+      auto const decrypted_inner =
+          static_cast<int>(obj.GetNamedNumber(L"decryptedInner"));
+      auto const entries = obj.GetNamedArray(L"entries");
+      title = L"解压包已解密";
+      body = L"逐条目完整性校验：" + std::to_wstring(verified) + L" / " +
+             std::to_wstring(total) + L" 个文件通过\n";
+      if (lost_count > 0) {
+        body += L"\n\u26a0 有 " + std::to_wstring(lost_count) +
+                L" 个文件在加密壳覆盖区内，内容不在加密文件里，"
+                L"无法离线恢复，输出压缩包中没有它们：\n";
+        for (auto const& item : entries) {
+          auto const entry = item.GetObject();
+          if (entry.GetNamedBoolean(L"lost")) {
+            body += L"  \u2717 " +
+                    std::wstring{winrt::to_hstring(entry.GetNamedString(L"name"))
+                                     .c_str()} +
+                    L"\n";
+          }
+        }
+        body += L"这类文件只在安装了加密客户端的电脑上能打开原压缩包读到；"
+                L"请在那台电脑上打开原文件，把这几个文件另存出来。\n";
+      }
+      if (decrypted_inner > 0) {
+        body += L"其中 " + std::to_wstring(decrypted_inner) +
+                L" 个文件自身也带加密壳，已一并解密。\n";
+      }
+      body += L"输出文件：" + std::wstring{winrt::to_hstring(output).c_str()} +
+              (lost_count > 0
+                   ? L"\n其余文件校验通过、可直接使用；上述缺失文件请从源头电脑另行取回。"
+                   : L"\n全部文件校验通过，输出压缩包可以直接使用。原始文件未被改动。");
     } else {
       auto const head_rebuilt = obj.GetNamedBoolean(L"headRebuilt");
       auto const pages = static_cast<int>(obj.GetNamedNumber(L"pages"));
