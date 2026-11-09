@@ -120,6 +120,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   void LoadAutoCheckUpdatesSetting();
   void RefreshUpdateVersionLabel();
   void SaveUpdateSetting(std::wstring const& key, std::wstring const& value);
+  winrt::fire_and_forget ShowAboutDialog();
 
   std::shared_ptr<rivet::windows::Backend> backend_;
   winrt::hstring last_result_text_;
@@ -131,6 +132,11 @@ struct MainWindow : MainWindowT<MainWindow> {
   std::int64_t update_download_start_ = 0;
   bool auto_check_updates_ = true;
   winrt::Microsoft::UI::Xaml::DispatcherTimer update_timer_{nullptr};
+  // Shell state: the running version (title + About dialog) and the last
+  // real panel item so the About footer entry can restore the selection.
+  std::wstring current_version_;
+  winrt::Microsoft::UI::Xaml::Controls::NavigationViewItem last_nav_item_{
+      nullptr};
 };
 
 }  // namespace winrt::RivetHost::implementation

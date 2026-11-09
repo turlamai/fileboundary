@@ -186,7 +186,19 @@ void MainWindow::Nav_SelectionChanged(
   if (!item) {
     return;
   }
-  ShowPanel(std::wstring{winrt::unbox_value<winrt::hstring>(item.Tag()).c_str()});
+  auto const tag =
+      std::wstring{winrt::unbox_value<winrt::hstring>(item.Tag()).c_str()};
+  // the About footer entry is a dialog, not a panel: open it and put the
+  // selection back on whichever panel the user came from
+  if (tag == L"about") {
+    if (last_nav_item_) {
+      nav.SelectedItem(last_nav_item_);
+    }
+    ShowAboutDialog();
+    return;
+  }
+  last_nav_item_ = item;
+  ShowPanel(tag);
 }
 
 void MainWindow::ShowPanel(std::wstring const& tag) {

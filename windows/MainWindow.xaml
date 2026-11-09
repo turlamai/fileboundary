@@ -87,6 +87,19 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
+            <NavigationView.FooterMenuItems>
+                <NavigationViewItem Tag="about"
+                                    AutomationProperties.AutomationId="nav-about">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE946;" />
+                    </NavigationViewItem.Icon>
+                    <StackPanel>
+                        <TextBlock Text="关于" />
+                        <TextBlock Text="About" FontSize="11" Opacity="0.6" />
+                    </StackPanel>
+                </NavigationViewItem>
+            </NavigationView.FooterMenuItems>
+
             <NavigationView.Content>
                 <Grid>
                     <Grid.RowDefinitions>

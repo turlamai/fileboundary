@@ -847,6 +847,23 @@ winrt::fire_and_forget MainWindow::ShowUpdateDialog(
   }
 }
 
+// The About footer entry: product identity, running version, and the
+// GitHub Releases escape hatch. Family convention (taskly's About),
+// shaped for FileBoundary's NavigationView shell.
+winrt::fire_and_forget MainWindow::ShowAboutDialog() {
+  auto const version =
+      current_version_.empty() ? std::wstring(L"(读取中)") : current_version_;
+  std::wstring body =
+      L"FileBoundary — Windows 文件加密壳诊断与对抗恢复工具\n\n"
+      L"当前版本：" + version + L"\n"
+      L"标识符：dev.turlamai.fileboundary\n"
+      L"发布方：Turlamai\n"
+      L"© 2026 Turlamai";
+  ShowUpdateDialog(L"关于 FileBoundary", body, L"GitHub Releases", L"关闭",
+                   [] { open_releases_page(); });
+  co_return;
+}
+
 void MainWindow::RefreshUpdateVersionLabel() {
   auto const weak = get_weak();
   auto const dispatcher = DispatcherQueue();
@@ -868,6 +885,10 @@ void MainWindow::RefreshUpdateVersionLabel() {
             if (auto window = weak.get()) {
               auto const version = json_string(json, L"currentVersion");
               if (!version.empty()) {
+                window->current_version_ = version;
+                // the title carries the running version at all times —
+                // the operator should never have to hunt for it
+                window->Title(L"FileBoundary " + version);
                 window->UpdateCurrentVersionText().Text(L"当前版本：" + version);
               }
             }
