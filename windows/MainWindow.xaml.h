@@ -72,6 +72,8 @@ struct MainWindow : MainWindowT<MainWindow> {
                         winrt::Microsoft::UI::Xaml::DragEventArgs const& args);
   void FileBox_Drop(winrt::Windows::Foundation::IInspectable const& sender,
                     winrt::Microsoft::UI::Xaml::DragEventArgs const& args);
+  void ResultCollapse_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                            Microsoft::UI::Xaml::RoutedEventArgs const& args);
   void CopyResult_Click(winrt::Windows::Foundation::IInspectable const& sender,
                         Microsoft::UI::Xaml::RoutedEventArgs const& args);
 
@@ -88,6 +90,7 @@ struct MainWindow : MainWindowT<MainWindow> {
   void RunDecryptAsync();
   void RunTwinAsync();
   void SetBusyUi(bool busy);
+  void SetResultCollapsed(bool collapsed);
   void ShowPanel(std::wstring const& tag);
   void ShowDecryptResult(std::string const& json);
   void ShowTwinResult(std::string const& json);

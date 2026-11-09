@@ -486,7 +486,28 @@ void MainWindow::SetBusyUi(bool busy) {
   if (busy) {
     StatusBar().Severity(Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational);
     StatusBar().Message(L"正在处理，请稍候...");
+    // a long previous result must never push the action buttons under
+    // the fold while the user is starting the next run
+    SetResultCollapsed(true);
   }
+}
+
+// Collapse the shared result card to its header row (title + copy +
+// toggle) and back. The card never disappears entirely: the previous
+// verdict stays one click away, but the panel's action buttons keep
+// their space (field report: the doctor output covered the button).
+void MainWindow::SetResultCollapsed(bool collapsed) {
+  ResultBody().Visibility(collapsed
+                              ? Microsoft::UI::Xaml::Visibility::Collapsed
+                              : Microsoft::UI::Xaml::Visibility::Visible);
+  ResultCollapseGlyph().Glyph(collapsed ? L"\uE96D" : L"\uE96E");
+}
+
+void MainWindow::ResultCollapse_Click(
+    winrt::Windows::Foundation::IInspectable const&,
+    Microsoft::UI::Xaml::RoutedEventArgs const&) {
+  SetResultCollapsed(ResultBody().Visibility() ==
+                     Microsoft::UI::Xaml::Visibility::Visible);
 }
 
 // ---------------- async runs ----------------
@@ -705,6 +726,7 @@ void MainWindow::ShowTextResult(
     std::wstring const& status_message) {
   SetBusyUi(false);
   ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+  SetResultCollapsed(false);
   ResultTitle().Text(title);
   ResultText().Text(body);
   last_result_text_ = winrt::hstring(body);
@@ -805,6 +827,7 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
                            : L"\n原始文件未被改动。");
     }
     ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+    SetResultCollapsed(false);
     ResultTitle().Text(title);
     ResultText().Text(body);
     last_result_text_ = winrt::to_hstring(json);
@@ -842,6 +865,7 @@ void MainWindow::ShowTwinResult(std::string const& json) {
              L"「加密版本」是同一个文件的加密副本，然后重试。";
     }
     ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+    SetResultCollapsed(false);
     ResultTitle().Text(title);
     ResultText().Text(body);
     last_result_text_ = winrt::to_hstring(json);
@@ -862,6 +886,7 @@ void MainWindow::ShowTwinResult(std::string const& json) {
 void MainWindow::ShowFailed(std::string const& what) {
   SetBusyUi(false);
   ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
+  SetResultCollapsed(false);
   ResultTitle().Text(L"操作没有完成");
   std::wstring body = L"没有生成任何输出文件。\n原因：";
   body += std::wstring{winrt::to_hstring(what).c_str()};

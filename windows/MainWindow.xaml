@@ -369,22 +369,26 @@
                     <!--  ================= shared result card =================  -->
                     <!--  MaxHeight keeps long results from pushing the
                           panel's action buttons out of the viewport: the
-                          text area scrolls inside the card instead.  -->
+                          text area scrolls inside the card instead, and a
+                          new operation collapses the card to its header so
+                          the action buttons are never covered (the operator
+                          can re-expand the previous result from there).  -->
                     <Border Grid.Row="1" x:Name="ResultCard" Visibility="Collapsed"
                             Margin="36,0,36,16" Padding="16,12"
                             CornerRadius="8"
-                            MaxHeight="400"
+                            MaxHeight="320"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1">
                         <Grid>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <Grid Grid.Row="0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Grid.Column="0" x:Name="ResultTitle" FontWeight="SemiBold"
@@ -394,10 +398,19 @@
                                         Background="Transparent" BorderThickness="0"
                                         Padding="8,2" FontSize="12"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <Button Grid.Column="2" x:Name="ResultCollapseButton"
+                                        Click="ResultCollapse_Click"
+                                        Background="Transparent" BorderThickness="0"
+                                        Padding="4,2" FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}">
+                                    <FontIcon x:Name="ResultCollapseGlyph" Glyph="&#xE96E;"
+                                              FontSize="12" />
+                                </Button>
                             </Grid>
-                            <ScrollViewer Grid.Row="1" Margin="0,4,0,0"
+                            <ScrollViewer x:Name="ResultBody" Grid.Row="1" Margin="0,4,0,0"
                                           VerticalScrollBarVisibility="Auto"
-                                          VerticalScrollMode="Enabled">
+                                          VerticalScrollMode="Enabled"
+                                          MaxHeight="240">
                                 <TextBlock x:Name="ResultText" TextWrapping="Wrap"
                                            IsTextSelectionEnabled="True"
                                            FontSize="13"
