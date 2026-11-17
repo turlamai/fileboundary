@@ -510,6 +510,157 @@
                  (make-two-entry-zip "notes.bin" wrapped-txt "t2"))
                 pad)))
 
+;; ---------- header-zone boundary recovery (owner field report 2026-11-17) ------
+
+;; The wrapper destroys exactly the file's first 512 bytes. The zone rule
+;; classified by POSITION (lho < 512), not by DAMAGE: an archive member
+;; the owner added to a wrapped zip landed with its local header inside
+;; the zone while its DATA started past 512 - every content byte
+;; survived, only the local header (name/extra lengths) was destroyed.
+;; Recovery must rebuild the header from the central directory, gate on
+;; the entry's own method/CRC/usize, and must never fabricate content
+;; for members whose data genuinely starts inside the zone.
+
+;; hand-built all-STORED archive so every offset is exact
+(define (hz-u16 v)
+  (bytes (bitwise-and v 255) (bitwise-and (arithmetic-shift v -8) 255)))
+(define (hz-u32 v)
+  (bytes-append (hz-u16 v) (hz-u16 (arithmetic-shift v -16))))
+(define (hz-lfh name data)
+  (bytes-append #"PK\x03\x04" (hz-u16 20) (hz-u16 0) (hz-u16 0)
+                (hz-u16 0) (hz-u16 0)
+                (hz-u32 (crc32-bytes data))
+                (hz-u32 (bytes-length data))
+                (hz-u32 (bytes-length data))
+                (hz-u16 (bytes-length name)) (hz-u16 0) name data))
+(define (hz-cd name data lho)
+  (bytes-append #"PK\x01\x02" (hz-u16 20) (hz-u16 20) (hz-u16 0) (hz-u16 0)
+                (hz-u16 0) (hz-u16 0)
+                (hz-u32 (crc32-bytes data))
+                (hz-u32 (bytes-length data)) (hz-u32 (bytes-length data))
+                (hz-u16 (bytes-length name)) (hz-u16 0) (hz-u16 0)
+                (hz-u16 0) (hz-u16 0) (hz-u32 0)
+                (hz-u32 lho) name))
+(define (hz-zip specs)
+  ;; specs: list of (name-bytes data-bytes); entries stored, back-to-back
+  (define-values (body ents)
+    (for/fold ([acc #""] [es '()]) ([sp (in-list specs)])
+      (define part (hz-lfh (car sp) (cadr sp)))
+      (values (bytes-append acc part)
+              (cons (list (car sp) (cadr sp) (bytes-length acc)) es))))
+  (define ordered (reverse ents))
+  (define cds
+    (apply bytes-append
+           (for/list ([e (in-list ordered)]) (hz-cd (car e) (cadr e) (caddr e)))))
+  (bytes-append body cds #"PK\x05\x06" (hz-u16 0) (hz-u16 0)
+                (hz-u16 (length ordered)) (hz-u16 (length ordered))
+                (hz-u32 (bytes-length cds)) (hz-u32 (bytes-length body))
+                (hz-u16 0)))
+
+;; geometry: d/ (lho 0), pad.bin (lho 32, data 69..489 - fully inside the
+;; destroyed zone), big.bin (lho 489, data 526..1526 - header inside the
+;; zone, data past it), tail.txt (lho 1526, intact)
+(define hz-big-data
+  (let ([b (make-bytes 1000)])
+    (for ([i (in-range 1000)])
+      (bytes-set! b i (modulo (+ i 7) 256)))
+    b))
+(define hz-plain
+  (hz-zip (list (list #"d/" #"")
+                (list #"pad.bin" (make-bytes 420 65))
+                (list #"big.bin" hz-big-data)
+                (list #"tail.txt" (string->bytes/utf-8 "tail-bytes")))))
+;; the geometry contract this fixture exists for: big.bin's local header
+;; sits inside the zone while its data starts past it
+(check-equal? (subbytes hz-plain 489 493) #"PK\x03\x04")
+(check-equal? (subbytes hz-plain 526 530) (subbytes hz-big-data 0 4))
+(define hz-report (decrypt-zip (wrap-variant-c hz-plain) pad))
+(check-equal? (hash-ref hz-report 'kind) "zip")
+(check-equal? (hash-ref hz-report 'total) 4)
+;; pad.bin is genuinely destroyed (data 69..489 inside the zone) and must
+;; stay lost; big.bin is fully recoverable and must come out intact
+(check-equal? (hash-ref hz-report 'verified) 3)  ; d/ + big.bin + tail.txt
+(check-equal? (hash-ref hz-report 'recoveredEntries) 1)
+(check-equal? (hash-ref hz-report 'lostEntries) '("pad.bin"))
+(define hz-out (make-temporary-file "fb-hz~a.zip"))
+(with-output-to-file hz-out
+  (lambda () (write-bytes (hash-ref hz-report 'bytes))) #:exists 'replace)
+(define hz-members (make-hash))
+(call-with-input-file hz-out
+  (lambda (in)
+    (unzip in (lambda (name is-dir? port)
+                (unless is-dir?
+                  (hash-set! hz-members name (port->bytes port)))))))
+(check-equal? (hash-ref hz-members #"big.bin" #f) hz-big-data)
+(check-equal? (hash-ref hz-members #"tail.txt" #f) #"tail-bytes")
+(check-false (hash-ref hz-members #"pad.bin" #f))
+(delete-file hz-out)
+
+;; a member whose data straddles the zone boundary (start < 512 <= end)
+;; is genuinely destroyed at its head: it must stay lost, never rebuilt
+;; from the surviving tail. Geometry: c/ (lho 0), fill.bin (lho 32, data
+;; 70..469), cross.bin (lho 469, data 508..1208 - straddles), end.txt
+;; (lho 1209... measured from construction), intact
+(define hz-cross-plain
+  (hz-zip (list (list #"c/" #"")
+                (list #"fill.bin" (make-bytes 399 66))
+                (list #"cross.bin" (make-bytes 700 67))
+                (list #"end.txt" (string->bytes/utf-8 "end")))))
+(check-equal? (subbytes hz-cross-plain 469 473) #"PK\x03\x04")
+(check-equal? (subbytes hz-cross-plain 508 512) (make-bytes 4 67))
+(define hz-cross-report (decrypt-zip (wrap-variant-c hz-cross-plain) pad))
+(check-equal? (hash-ref hz-cross-report 'total) 4)
+(check-equal? (hash-ref hz-cross-report 'recoveredEntries) 0)
+(check-equal? (hash-ref hz-cross-report 'verified) 2)  ; c/ + end.txt
+(check-equal? (length (hash-ref hz-cross-report 'lostEntries)) 2)
+
+;; a RECOVERED member that is itself an E-SafeNet-wrapped nested archive
+;; must go through the same same-pass nested decryption as any other
+;; member (field parity: the owner can add wrapped files to archives).
+;; Geometry: c3/ (lho 0), fill2.bin (lho 33, data 71..491), nested.bin
+;; (lho 491, data 531.. - header in the zone, data past it), end3.txt.
+(define hz-inner-plain
+  (hz-zip (list (list #"fill.txt" (make-bytes 480 68))
+                (list #"keep.txt" (string->bytes/utf-8 "inner-keep")))))
+(define hz-nested-report
+  (decrypt-zip
+   (wrap-variant-c
+    (hz-zip (list (list #"c3/" #"")
+                  (list #"fill2.bin" (make-bytes 420 69))
+                  (list #"nested.bin" (wrap-variant-c hz-inner-plain))
+                  (list #"end3.txt" (string->bytes/utf-8 "end3")))))
+   pad))
+(check-equal? (hash-ref hz-nested-report 'total) 4)
+(check-equal? (hash-ref hz-nested-report 'verified) 3)  ; c3/ nested end3
+(check-equal? (hash-ref hz-nested-report 'recoveredEntries) 1)
+(check-equal? (hash-ref hz-nested-report 'decryptedInner) 1)
+(check-equal? (hash-ref hz-nested-report 'lostEntries) '("fill2.bin"))
+(define hz-nested-out (make-temporary-file "fb-hzn~a.zip"))
+(with-output-to-file hz-nested-out
+  (lambda ()
+    (write-bytes (hash-ref hz-nested-report 'bytes))) #:exists 'replace)
+(define hz-nested-members (make-hash))
+(call-with-input-file hz-nested-out
+  (lambda (in)
+    (unzip in (lambda (name is-dir? port)
+                (unless is-dir?
+                  (hash-set! hz-nested-members name (port->bytes port)))))))
+(check-equal? (hash-ref hz-nested-members #"end3.txt" #f) #"end3")
+(check-false (hash-ref hz-nested-members #"fill2.bin" #f))
+;; the recovered nested.bin is the inner archive decrypted in the same
+;; pass: fill.txt (crossing the inner zone) lost, keep.txt intact
+(define hz-inner-round
+  (call-with-input-bytes (hash-ref hz-nested-members #"nested.bin")
+    (lambda (in)
+      (define acc (make-hash))
+      (unzip in (lambda (name is-dir? port)
+                  (unless is-dir?
+                    (hash-set! acc name (port->bytes port)))))
+      acc)))
+(check-equal? (hash-ref hz-inner-round #"keep.txt" #f) #"inner-keep")
+(check-false (hash-ref hz-inner-round #"fill.txt" #f))
+(delete-file hz-nested-out)
+
 ;; ---------- classic-xref straddler layouts (field reports 2026-11) ----------
 
 ;; Two field layouts the classic rebuild mishandled (owner reports,

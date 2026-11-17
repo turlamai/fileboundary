@@ -50,6 +50,7 @@
              'verified (hash-ref report 'verified)
              'total (hash-ref report 'total)
              'lostCount (length (hash-ref report 'lostEntries '()))
+             'recovered (hash-ref report 'recoveredEntries 0)
              'decryptedInner (hash-ref report 'decryptedInner 0)
              'entries (for/list ([e (in-list (hash-ref report 'entries '()))])
                         (hash 'name (hash-ref e 'name)
