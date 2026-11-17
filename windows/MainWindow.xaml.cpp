@@ -322,11 +322,21 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 // may resume off the UI thread - completion hops via TryEnqueue. Non-file
 // payloads fail the async call and stay silent; this projection has no
 // StandardDataFormats probe to pre-filter them.
+//
+// The Drop handler MUST take a deferral around the async read: the OLE
+// drag-drop machinery tears the data object down once the Drop handler
+// returns, and co_awaiting GetStorageItemsAsync races that teardown - a
+// perfectly valid local file then throws (field report: dropping a key
+// .json onto the decrypt pad box showed the 'unreadable' card while the
+// Win32 WM_DROPFILES channel was proven fine by synthetic tests).
+// GetDeferral() keeps the drag-drop session alive until Complete(), so
+// the async read always sees a live data object.
 winrt::fire_and_forget DropFileIntoBox(
     winrt::Windows::Foundation::IInspectable const& sender,
     winrt::Microsoft::UI::Xaml::DragEventArgs args,
     Microsoft::UI::Dispatching::DispatcherQueue dq,
     winrt::weak_ref<MainWindow> weak) {
+  auto const deferral = args.GetDeferral();
   try {
     auto items = co_await args.DataView().GetStorageItemsAsync();
     dq.TryEnqueue([sender, items, weak]() mutable {
@@ -354,6 +364,7 @@ winrt::fire_and_forget DropFileIntoBox(
       }
     });
   }
+  deferral.Complete();
 }
 
 }  // namespace
