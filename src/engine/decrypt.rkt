@@ -595,6 +595,92 @@
       (decrypt-pdf-classic s body-start)
       (decrypt-pdf-salvage s body-start)))
 
+;; ---------- classic rebuild: straddler prefix reconstruction ----------
+;; v0.8.4: field reports (2026-11) showed the fixed page-prefix splice
+;; is wrong for two real layouts — a page cut mid-reference inside its
+;; /Resources sub-dictionaries rebuilt with an unbalanced prefix (the
+;; first /MediaBox-less page rendered blank), and a pages-tree ROOT cut
+;; mid-/Kids aborted with "straddling object is not a page". The prefix
+;; is now rebuilt from the surviving tail's own structure instead of a
+;; fixed splice, and the root layout heals via the xref page scan.
+
+;; dict depth balance of a byte fragment: << opens, >> closes, literal
+;; and hex strings are skipped so embedded payloads cannot skew the
+;; count. A negative result means the tail closes more dictionaries
+;; than it opens — that many dictionaries were hanging open at the cut.
+(define (dict-balance b)
+  (define n (bytes-length b))
+  (let loop ([i 0] [d 0])
+    (cond
+      [(>= (+ i 1) n) d]
+      ;; literal string: parens nest, backslash escapes
+      [(= (bytes-ref b i) 40)
+       (let paren ([j (add1 i)] [nest 1])
+         (cond
+           [(>= j n) (loop j d)]
+           [(and (= (bytes-ref b j) 92) (< (+ j 1) n)) (paren (+ j 2) nest)]
+           [(= (bytes-ref b j) 40) (paren (add1 j) (add1 nest))]
+           [(= (bytes-ref b j) 41)
+            (if (= nest 1) (loop (add1 j) d) (paren (add1 j) (sub1 nest)))]
+           [else (paren (add1 j) nest)]))]
+      [(= (bytes-ref b i) 60)
+       (cond
+         [(= (bytes-ref b (add1 i)) 60) (loop (+ i 2) (add1 d))]
+         ;; lone '<': hex string, skip to its '>' terminator
+         [else (loop (or (bytes-find b #">" (add1 i)) n) d)])]
+      [(and (= (bytes-ref b i) 62) (= (bytes-ref b (add1 i)) 62))
+       (loop (+ i 2) (sub1 d))]
+      [else (loop (add1 i) d)])))
+
+;; completion tokens so a DICT tail cut mid-value parses: dictionary
+;; values are name->value entries, so the head supplies a fabricated
+;; entry name plus, depending on where the cut fell inside an indirect
+;; reference, the missing integers. The fabricated entry is unreferenced
+;; by name — it only has to parse; the surviving entries keep theirs.
+(define (page-tail-completion tail)
+  (cond
+    ;; "<gen> R" survived: supply name + object number
+    [(regexp-match? #px#"^[ ]?[0-9]+[ ]R[ /]" tail) "/X 1 "]
+    ;; "<obj> <gen> R" survived: supply the name only
+    [(regexp-match? #px#"^[ ]?[0-9]+[ ][0-9]+[ ]R" tail) "/X "]
+    ;; bare "R" survived: supply name + object number + generation
+    [(regexp-match? #px#"^[ ]?R[ ]" tail) "/X 1 0 "]
+    ;; a fresh name survived: the cut fell at an entry boundary
+    [(regexp-match? #px#"^/" tail) ""]
+    ;; any other value shape (number, array, string, hex, dict): give
+    ;; it a name and let the tail supply the value
+    [else "/X "]))
+
+;; the orphan fragment's surviving entry names identify which /Resources
+;; sub-dictionary the cut opened into (/GS* → ExtGState etc.); unknown
+;; containers degrade to a neutral /G key — the fabricated level only
+;; has to parse, and entries that content streams look up by name
+;; (/GS14 etc.) stay reachable when the container key matches
+(define (infer-resources-subkey tail)
+  (cond
+    [(regexp-match? #px#"/GS[0-9]" tail) "/ExtGState"]
+    [(regexp-match? #px#"/F[0-9]" tail) "/Font"]
+    [(regexp-match? #px#"/(Im|Image)[0-9]" tail) "/XObject"]
+    [(regexp-match? #px#"/Cs[0-9]" tail) "/ColorSpace"]
+    [else "/G"]))
+
+;; pages-tree-root tail shape: a (possibly cut) run of kid references
+;; closed by "] >>" then endobj — references only, no page keys
+(define (pages-root-tail-shape tail)
+  (define m (regexp-match-positions
+             #px#"^[ ]?(?:[0-9]+[ ]R[ ]|R[ ])?(?:[0-9]+[ ]+0[ ]+R[ ]?)*\\]"
+             tail))
+  (and m
+       (regexp-match? #px#"^[ ]?>>[ \r\n]*endobj" (subbytes tail (cdar m)))))
+
+;; kid numbers visible in a root tail's reference run; a cut "<gen> R"
+;; or bare "R" fragment never matches, so the cut kid is always in the
+;; lost head by definition. Byte-regex captures come back as byte
+;; strings, so decode before string->number.
+(define (tail-kids tail)
+  (map (lambda (b) (string->number (bytes->string/utf-8 b)))
+       (regexp-match* #px#"([0-9]+)[ ]+0[ ]+R" tail #:match-select cadr)))
+
 (define (decrypt-pdf-classic s body-start)
   (define hdr (find-xref-table s body-start))
   (unless hdr (error 'decrypt-pdf "no classic xref table header"))
@@ -626,54 +712,197 @@
         (error 'decrypt-pdf "straddler endobj not found")))
   (define obj-end-abs (+ obj-end 8))
   (define straddler-tail (subbytes s body-start obj-end-abs))
-  ;; the surviving tail must identify the object as a page (its /Type sat
-  ;; in the lost prefix; /StructParents or /Contents survive)
-  (unless (or (regexp-match? #px#"/StructParents" straddler-tail)
-              (regexp-match? #px#"/Contents" straddler-tail))
-    (error 'decrypt-pdf "straddling object is not a page"))
-  (define prefix
+  (define page-objects (page-objects-from-xref s body-start))
+  ;; classify the straddler by its surviving tail: a page keeps
+  ;; /Contents or /StructParents past the boundary; the pages-tree root
+  ;; keeps a bare run of /Kids references closed by "] >>"
+  (define page-tail?
+    (or (regexp-match? #px#"/StructParents" straddler-tail)
+        (regexp-match? #px#"/Contents" straddler-tail)))
+  (define root-tail?
+    (and (not page-tail?) (pages-root-tail-shape straddler-tail)))
+  (unless (or page-tail? root-tail?)
+    (error 'decrypt-pdf
+           "straddling object tail is neither a page nor a pages tree"))
+  ;; the rebuilt head lands the catalog and (page layout) the pages
+  ;; tree at their original xref offsets, all below straddler-off —
+  ;; the straddler must not collide with either
+  (when (and page-tail? (< straddler 3))
+    (error 'decrypt-pdf "straddling page collides with the rebuilt head objects"))
+  (when (and root-tail? (< straddler 2))
+    (error 'decrypt-pdf "straddling pages tree collides with the rebuilt catalog"))
+  (when (and root-tail? (null? page-objects))
+    (error 'decrypt-pdf "no page objects recoverable from the xref"))
+  ;; ---- original offsets from the classic table ----
+  ;; v0.8.4: the hybrid field files also carry an /XRefStm
+  ;; cross-reference stream and an empty incremental-update table
+  ;; (startxref -> "xref 0 0" + trailer). Readers that understand xref
+  ;; streams resolve objects through THE STREAM, whose entries keep
+  ;; the original offsets — patching only the classic table's records
+  ;; leaves stream readers following the stale offset into the rebuilt
+  ;; head, landing mid-token. The rebuild therefore lands every object
+  ;; exactly where the original stood, so the classic table, the
+  ;; stream and the output all agree and record patches fall away.
+  (define (rec-offset k)
+    (and (< k count)
+         (let* ([rp (+ tstart (* 20 k))]
+                [end (+ rp 20)])
+           (and (<= end (bytes-length s))
+                (let ([rec (subbytes s rp end)])
+                  (and (= (bytes-ref rec 17) (char->integer #\n))
+                       (string->number
+                        (bytes->string/utf-8 (subbytes rec 0 10)))))))))
+  (define orig1 (rec-offset 1))
+  (define orig2 (rec-offset 2))
+  (unless orig1
+    (error 'decrypt-pdf "classic xref table has no in-use record for the catalog"))
+  ;; the catalog is rebuilt only when its own record points into the
+  ;; lost zone; a surviving catalog already references the right tree.
+  ;; Same for the pages tree in the page layout (a surviving tree
+  ;; already lists the straddler among its kids).
+  (define catalog-lost? (< orig1 body-start))
+  (define tree-lost?
+    (and page-tail? (or (not orig2) (< orig2 body-start))))
+  ;; straddler-prefix: the fabricated bytes landing at
+  ;; straddler-off..body-start; tree-txt: the rebuilt pages tree (page
+  ;; layout only); pages-count: report total
+  (define-values (straddler-prefix tree-txt pages-count)
+    (cond
+      [page-tail?
+       (let ()
+         (define kids (cons straddler
+                            (for/list ([k page-objects]
+                                       #:unless (= k straddler))
+                              k)))
+         ;; how many dictionaries the cut left hanging open: 1 = page
+         ;; keys survived, 2 = /Resources entries, 3 = inside a
+         ;; /Resources sub-dictionary (recovered by its entry names)
+         (define balance (- (dict-balance straddler-tail)))
+         (unless (<= 1 balance 6)
+           (error 'decrypt-pdf
+                  "straddler page tail leaves ~a unmatched dictionaries"
+                  balance))
+         (define completion
+           (string->bytes/utf-8 (page-tail-completion straddler-tail)))
+         (define fixed
+           (string->bytes/utf-8
+            (string-append
+             (format "~a 0 obj\r\n<</Type/Page/Parent 2 0 R" straddler)
+             (if (>= balance 2) "/Resources<<" "")
+             (if (>= balance 3)
+                 (string-append (infer-resources-subkey straddler-tail) "<<")
+                 "")
+             (apply string-append
+                    (for/list ([_ (in-range (max 0 (- balance 3)))])
+                      "/G<<")))))
+         (define fill (- (- body-start straddler-off)
+                         (bytes-length fixed) (bytes-length completion)))
+         (unless (>= fill 0)
+           (error 'decrypt-pdf "no room for straddler prefix"))
+         (values (bytes-append fixed (make-bytes fill (char->integer #\space))
+                               completion)
+                 (string->bytes/utf-8
+                  (format "2 0 obj\n<</Type/Pages/Kids[~a]/Count ~a>>\nendobj\n"
+                          (string-join
+                           (for/list ([k kids]) (format "~a 0 R" k)) " ")
+                          (length kids)))
+                 (length kids)))]
+      [else  ;; root-tail?: the straddler IS the pages tree root
+       (let ()
+         (define tkids (tail-kids straddler-tail))
+         (unless (andmap (lambda (k) (member k page-objects)) tkids)
+           (error 'decrypt-pdf
+                  "straddler /Kids references objects that are not pages"))
+         (define lost-kids
+           (for/list ([k page-objects] #:unless (member k tkids)) k))
+         ;; /Kids arrays are written in ascending object order, so the
+         ;; lost head must sit entirely before the surviving tail —
+         ;; anything else means the scan misread the array
+         (when (and (pair? tkids) (pair? lost-kids)
+                    (>= (apply max lost-kids) (apply min tkids)))
+           (error 'decrypt-pdf
+                  "lost /Kids entries do not precede the surviving ones"))
+         (define lost-last (and (pair? lost-kids) (last lost-kids)))
+         ;; completion for the kid reference the cut sliced: array
+         ;; elements are positional, so only the missing integers of
+         ;; the cut reference are supplied (its number comes from the
+         ;; xref scan)
+         (define completion-txt
+           (cond
+             [(regexp-match? #px#"^[ ]?R[ ]" straddler-tail)
+              (unless lost-last
+                (error 'decrypt-pdf
+                       "cut /Kids reference has no recoverable object number"))
+              (string-append (number->string lost-last) " 0 ")]
+             [(regexp-match? #px#"^[ ]?[0-9]+[ ]R[ ]" straddler-tail)
+              (unless lost-last
+                (error 'decrypt-pdf
+                       "cut /Kids reference has no recoverable object number"))
+              (string-append (number->string lost-last) " ")]
+             [else ""]))
+         ;; the cut kid's head is completion-only; every OTHER lost kid
+         ;; is re-emitted as a full reference
+         (define head-lost-kids
+           (if (string=? completion-txt "") lost-kids (drop-right lost-kids 1)))
+         (define completion (string->bytes/utf-8 completion-txt))
+         (define fixed
+           (string->bytes/utf-8
+            (string-append
+             (format "~a 0 obj\r\n<</Type/Pages/Count ~a/Kids["
+                     straddler (length page-objects))
+             (apply string-append
+                    (for/list ([k head-lost-kids]) (format "~a 0 R " k))))))
+         (define fill (- (- body-start straddler-off)
+                         (bytes-length fixed) (bytes-length completion)))
+         (unless (>= fill 0)
+           (error 'decrypt-pdf "no room for straddler prefix"))
+         (values (bytes-append fixed (make-bytes fill (char->integer #\space))
+                               completion)
+                 #""
+                 (length page-objects)))
+                 ]))
+  ;; ---- head zone: '#' filler with rebuilt objects at their
+  ;; original offsets ----
+  (define catalog-txt
     (string->bytes/utf-8
-     (format "~a 0 obj\r\n<</Type/Page/Parent 2 0 R/Resources<<"
-             straddler)))
-  (define fill
-    (- (- body-start head-prefix-len) (bytes-length prefix) 2))
-  (unless (>= fill 0)
-    (error 'decrypt-pdf "no room for straddler prefix"))
-  (define straddler-full
-    (bytes-append prefix (make-bytes fill (char->integer #\space))
-                  #"/X" straddler-tail))
-  (define pages
-    (for/list ([k (page-objects-from-xref s body-start)]
-               #:unless (= k straddler))
-      k))
-  (define kids (cons straddler pages))
-  ;; rebuilt head: header + catalog + pages tree, padded so the straddler
-  ;; lands exactly at its xref offset (430 in the measured family)
-  (define head1
-    #"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
-  (define off1 15)
-  (define off2 (bytes-length head1))
-  (define head2
-    (string->bytes/utf-8
-     (format "2 0 obj\n<< /Type /Pages /Kids[~a] /Count ~a >>\nendobj\n"
-             (string-join
-              (for/list ([k kids]) (format "~a 0 R" k)) " ")
-             (length kids))))
-  (unless (<= (+ (bytes-length head1) (bytes-length head2))
-              head-prefix-len)
-    (error 'decrypt-pdf "rebuilt head does not fit before the straddler"))
+     (format "1 0 obj\n<< /Type /Catalog /Pages ~a 0 R >>\nendobj\n"
+             (if page-tail? 2 straddler))))
+  (define catalog-at (and catalog-lost? orig1))
+  (when (and catalog-at (< orig1 9))
+    (error 'decrypt-pdf "no room for the PDF header before the catalog"))
+  (define catalog-end
+    (if catalog-at (+ catalog-at (bytes-length catalog-txt)) 15))
+  (define head-limit (- head-prefix-len 1))
+  (when (and catalog-at (> catalog-end head-limit))
+    (error 'decrypt-pdf "rebuilt catalog does not fit before the straddler"))
+  ;; the rebuilt tree lands at ITS original offset when it fits there
+  ;; without touching the catalog; otherwise right behind the catalog,
+  ;; with record 2 patched to that fallback position
+  (define tree-fits-orig?
+    (and tree-lost? orig2
+         (<= (+ orig2 (bytes-length tree-txt)) head-limit)
+         (or (not catalog-at) (<= catalog-end orig2))))
+  (define tree-at (if tree-fits-orig? orig2 catalog-end))
+  (when (and tree-lost? (> (+ tree-at (bytes-length tree-txt)) head-limit))
+    (error 'decrypt-pdf "rebuilt pages tree does not fit before the straddler"))
+  (define patch-record-2? (and tree-lost? (not tree-fits-orig?)))
   (define head
-    (bytes-append head1 head2
-                  (make-bytes (- head-prefix-len
-                                 (bytes-length head1)
-                                 (bytes-length head2)
-                                 1)
-                              (char->integer #\#))
-                  #"\n"))
-  ;; patch xref records 1 and 2 to the rebuilt offsets (record k keeps
-  ;; pointing at its original offset, which the assembly preserves)
+    (make-bytes head-prefix-len (char->integer #\#)))
+  (bytes-copy! head 0
+               (if (and catalog-at (< orig1 15))
+                   #"%PDF-1.4\n"
+                   #"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"))
+  (when catalog-at (bytes-copy! head catalog-at catalog-txt))
+  (when tree-lost? (bytes-copy! head tree-at tree-txt))
+  ;; a newline right before the straddler prefix keeps its first token
+  ;; clean (kept only when the placement did not already end there)
+  (when (= (bytes-ref head (- head-prefix-len 1)) (char->integer #\#))
+    (bytes-set! head (- head-prefix-len 1) 10))
+  ;; patch record 2 only when the tree had to fall back behind the
+  ;; catalog; everything else already sits where its record says
   (define s2 (bytes-copy s))
-  (for ([spec (list (cons 1 off1) (cons 2 off2))])
+  (for ([spec (if patch-record-2? (list (cons 2 tree-at)) '())]
+        #:when (< (car spec) count))
     (define rp (+ tstart (* 20 (car spec))))
     (bytes-copy! s2 rp
                  (string->bytes/utf-8
@@ -682,21 +911,24 @@
   ;; fills up to body-start, then the straddler tail and the rest
   (define original
     (bytes-append head
-                  (subbytes straddler-full
-                            0
-                            (- (bytes-length straddler-full)
-                               (bytes-length straddler-tail)))
+                  straddler-prefix
                   straddler-tail
                   (subbytes s2 obj-end-abs)))
   (unless (= (bytes-length original) (bytes-length s))
     (error 'decrypt-pdf "assembled length mismatch: ~a vs ~a"
            (bytes-length original) (bytes-length s)))
   ;; xref spot-check in the original coordinate system: walk every
-  ;; classic table (arithmetically — no control bytes in patterns) and
-  ;; verify each 'n' record's offset lands on an object header
+  ;; classic table and verify each 'n' record's offset lands on an
+  ;; object header. v0.8.4: the scan covers the whole document — the old
+  ;; last-64KiB window silently skipped tables larger than 64 KiB (the
+  ;; 4 005-entry field table starts ~80 KiB before EOF, so the check
+  ;; verified nothing). Records >= 15 are checked: 15 is the rebuilt
+  ;; catalog's offset, so this also validates the patched head records
+  ;; and the straddler's own landing; an offset with no room for the
+  ;; header probe counts as bad instead of crashing subbytes.
   (define checked 0)
   (define bad 0)
-  (let loop-table ([search-from (max 0 (- (bytes-length original) 65536))])
+  (let loop-table ([search-from 0])
     (define hdr (find-xref-table original search-from))
     (when hdr
       (define t-count (car hdr))
@@ -708,10 +940,11 @@
         (when (= (bytes-ref rec 17) (char->integer #\n))
           (define off
             (string->number (bytes->string/utf-8 (subbytes rec 0 10))))
-          (when (and off (>= off 512))
+          (when (and off (>= off 15))
             (set! checked (add1 checked))
-            (unless (regexp-match? re-rec-num
-                                   (subbytes original off (+ off 32)))
+            (unless (and (< (+ off 32) (bytes-length original))
+                         (regexp-match? re-rec-num
+                                        (subbytes original off (+ off 32))))
               (set! bad (add1 bad))))))
       (loop-table (+ t-start (* 20 t-count)))))
   (hash 'bytes original
@@ -719,7 +952,7 @@
         'xrefBad bad
         'headRebuilt #t
         'coverObject straddler
-        'pages (length kids)))
+        'pages pages-count))
 
 ;; ---------- non-classic xref salvage (xref-stream PDFs) ----------
 
