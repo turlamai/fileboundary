@@ -5,10 +5,17 @@
 #endif
 #include "GeneratedBackend.hpp"
 
+#include <array>
 #include <cstdint>
 #include <stdexcept>
 
 #include <ShObjIdl_core.h>
+#include <shellapi.h>
+#include <commctrl.h>
+
+// shell drop (DragAcceptFiles/DragQueryFileW) and SetWindowSubclass.
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "comctl32.lib")
 
 #include <winrt/Microsoft.UI.Windowing.h>
 #include <winrt/Microsoft.UI.Xaml.Media.h>
@@ -48,6 +55,28 @@ bool IsRunningElevated() {
     ::FreeSid(group);
   }
   return isAdmin != FALSE;
+}
+
+// Unpackaged WinUI 3 never surfaces XAML DragOver/Drop for Explorer
+// drags: the OLE drag machinery does not reach the XAML island, so the
+// XAML-wired handlers stay silent and the cursor shows the blocked
+// badge. The classic shell drop path still works everywhere, so the
+// window also accepts files the pre-XAML way: DragAcceptFiles plus a
+// subclass proc that receives WM_DROPFILES on the UI thread. The shell
+// prefers an OLE target when one accepts, so at most one of the two
+// channels fires per drop.
+constexpr UINT_PTR kFileDropSubclassId = 0x46445250u;  // "FDRP"
+
+LRESULT CALLBACK FileDropSubclassProc(HWND hwnd, UINT message,
+                                      WPARAM wparam, LPARAM lparam,
+                                      UINT_PTR id, DWORD_PTR ref) {
+  if (message == WM_DROPFILES && id == kFileDropSubclassId &&
+      ref != 0) {
+    reinterpret_cast<MainWindow*>(ref)->HandleWin32Drop(
+        reinterpret_cast<HDROP>(wparam));
+    return 0;
+  }
+  return ::DefSubclassProc(hwnd, message, wparam, lparam);
 }
 
 std::string utf8(std::filesystem::path const& path) {
@@ -113,6 +142,15 @@ MainWindow::MainWindow() {
             this, &MainWindow::FileBox_Drop)),
         true);
   }
+  // Dual-channel drag-drop: the XAML handlers cover the hosts where OLE
+  // reaches the island; the Win32 subclass covers the Explorer case
+  // that actually happens (see FileDropSubclassProc above). The HWND is
+  // valid here - AppWindow() is initialized further up the ctor.
+  if (HWND const hwnd = WindowHandle()) {
+    ::DragAcceptFiles(hwnd, TRUE);
+    ::SetWindowSubclass(hwnd, FileDropSubclassProc, kFileDropSubclassId,
+                        reinterpret_cast<DWORD_PTR>(this));
+  }
   // Comfortable default; the layout is fluid and scrolls on smaller sizes.
   AppWindow().ResizeClient(winrt::Windows::Graphics::SizeInt32{980, 660});
   // WinUI shows a generic placeholder in the title bar unless the
@@ -129,7 +167,16 @@ MainWindow::MainWindow() {
   // into the same orderly backend stop. The console-control callback runs
   // on its own thread, so it only touches the thread-safe stop() — never
   // XAML state.
-  Closed([this](auto const&, auto const&) { StopBackendOrderly(); });
+  Closed([this](auto const&, auto const&) {
+    // Detach the drop subclass while the HWND still exists; the shell
+    // must not deliver WM_DROPFILES into a half-destroyed C++ object.
+    if (HWND const hwnd = WindowHandle(); hwnd) {
+      ::RemoveWindowSubclass(hwnd, FileDropSubclassProc,
+                             kFileDropSubclassId);
+      ::DragAcceptFiles(hwnd, FALSE);
+    }
+    StopBackendOrderly();
+  });
   try {
     rivet::system::InstallShutdownHook([this] { StopBackendOrderly(); });
   } catch (std::exception const&) {
@@ -202,6 +249,9 @@ void MainWindow::Nav_SelectionChanged(
 }
 
 void MainWindow::ShowPanel(std::wstring const& tag) {
+  // remember the visible panel: an off-target Explorer drop falls back
+  // to that panel's primary input box (DropTargetBox)
+  current_panel_tag_ = tag;
   // a result belongs to the panel that produced it: switching panels
   // retires it, otherwise a stale '诊断完成' card follows the user around
   ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Collapsed);
@@ -419,6 +469,107 @@ void MainWindow::FileBox_Drop(
     winrt::Windows::Foundation::IInspectable const& sender,
     winrt::Microsoft::UI::Xaml::DragEventArgs const& args) {
   DropFileIntoBox(sender, args, DispatcherQueue(), get_weak());
+}
+
+// ---------------- Win32 shell drop (WM_DROPFILES) ----------------
+
+void MainWindow::HandleWin32Drop(HDROP drop) {
+  // WM_DROPFILES arrives on the UI thread, so XAML elements are touched
+  // directly - no async hop, no storage-item permission dance; Explorer
+  // hands over plain shell paths. Several files: take the first, same
+  // contract as the XAML channel.
+  auto const file_count = ::DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+  if (file_count == 0) {
+    ::DragFinish(drop);
+    return;
+  }
+  auto const path_length = ::DragQueryFileW(drop, 0, nullptr, 0);
+  if (path_length == 0) {
+    ::DragFinish(drop);
+    return;
+  }
+  std::wstring path(static_cast<std::size_t>(path_length) + 1, L'\0');
+  if (::DragQueryFileW(drop, 0, path.data(),
+                       static_cast<UINT>(path.size())) == 0) {
+    ::DragFinish(drop);
+    return;
+  }
+  path.resize(static_cast<std::size_t>(path_length));
+  POINT client_pt{};
+  auto const have_point = ::DragQueryPoint(drop, &client_pt) != FALSE;
+  // the HDROP is fully consumed above; nothing may touch it after this
+  ::DragFinish(drop);
+  // DragQueryPoint reports physical client pixels; XAML transforms work
+  // in effective (DIP) space - divide by the island's rasterization
+  // scale before hit-testing.
+  double scale = 1.0;
+  if (auto const root =
+          Content().try_as<winrt::Microsoft::UI::Xaml::UIElement>()) {
+    if (auto const xaml_root = root.XamlRoot()) {
+      scale = xaml_root.RasterizationScale();
+    }
+  }
+  if (scale <= 0.0) {
+    scale = 1.0;
+  }
+  winrt::Windows::Foundation::Point const dip_pt{
+      static_cast<float>(client_pt.x / scale),
+      static_cast<float>(client_pt.y / scale)};
+  auto box = have_point ? DropTargetBox(dip_pt) : nullptr;
+  if (!box) {
+    return;  // dropped outside the client area, or on a panel without inputs
+  }
+  box.Text(path);
+  if (box == DecryptInputBox()) {
+    FillDecryptOutput(DecryptInputBox(), DecryptOutputBox());
+  }
+}
+
+winrt::Microsoft::UI::Xaml::Controls::TextBox MainWindow::DropTargetBox(
+    winrt::Windows::Foundation::Point const& pt) {
+  namespace xaml = winrt::Microsoft::UI::Xaml;
+  // Hit test the path boxes on the VISIBLE panel: the drop point
+  // (window client area, DIP space) against each box's transformed
+  // origin plus rendered size. Boxes on hidden panels are skipped -
+  // their layout is stale and must not swallow the drop.
+  std::array<std::pair<xaml::Controls::TextBox, xaml::Controls::Grid>, 7>
+      candidates{{
+          {PathBox(), PanelScan()},
+          {VerifyOriginalBox(), PanelVerify()},
+          {VerifyExportBox(), PanelVerify()},
+          {DecryptInputBox(), PanelDecrypt()},
+          {DecryptPadBox(), PanelDecrypt()},
+          {TwinPlainBox(), PanelTwin()},
+          {TwinCipherBox(), PanelTwin()},
+      }};
+  for (auto const& [box, panel] : candidates) {
+    if (panel.Visibility() != xaml::Visibility::Visible) {
+      continue;
+    }
+    if (auto const transform = box.TransformToVisual(nullptr)) {
+      auto const origin = transform.TransformPoint({0.0f, 0.0f});
+      if (pt.X >= origin.X && pt.X <= origin.X + box.ActualWidth() &&
+          pt.Y >= origin.Y && pt.Y <= origin.Y + box.ActualHeight()) {
+        return box;
+      }
+    }
+  }
+  // Missed every box: fall back to the visible panel's primary input,
+  // so a drop landing slightly off the TextBox still goes somewhere
+  // useful. Doctor/update take no path input - their drops are ignored.
+  if (current_panel_tag_ == L"scan") {
+    return PathBox();
+  }
+  if (current_panel_tag_ == L"verify") {
+    return VerifyOriginalBox();
+  }
+  if (current_panel_tag_ == L"decrypt") {
+    return DecryptInputBox();
+  }
+  if (current_panel_tag_ == L"twin") {
+    return TwinPlainBox();
+  }
+  return nullptr;
 }
 
 // ---------------- panel actions ----------------
