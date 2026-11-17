@@ -285,6 +285,64 @@
            (hash 'ok #f 'why "crc mismatch")]
           [else (hash 'ok #t 'why "" 'data out)])))
 
+;; ---------- header-zone entry recovery (plain-zip flavor) ----------
+
+;; The wrapper destroys exactly the file's first 512 bytes (the wrapper
+;; header replaces them one-to-one; no original head byte survives in
+;; the file). An entry whose local header sits inside the zone but whose
+;; DATA starts at or after the zone lost nothing but that local header,
+;; and the central directory still carries every field it carried except
+;; the name/extra lengths: the name length comes from the CD record, and
+;; the extra length is recovered by trying candidates gated by the
+;; entry's own method/CRC/usize. Written zips lay entries back-to-back,
+;; so the next surviving local header pins the exact data end and yields
+;; the first, exact candidate. An entry whose data starts inside the
+;; zone (its stream head is physically gone) or whose candidates all
+;; fail the gate stays lost; content is never fabricated.
+(define zone-limit 512)
+
+;; one candidate data span, gated by the entry's own integrity triple;
+;; a span reaching into the destroyed zone can never be tried
+(define (try-zone-entry-span s e start)
+  (and (>= start zone-limit)
+       (<= (+ start (hash-ref e 'csize)) (bytes-length s))
+       (with-handlers ([exn:fail? (lambda (_) #f)])
+         (define data (subbytes s start (+ start (hash-ref e 'csize))))
+         (define out
+           (case (hash-ref e 'method)
+             [(8) (inflate-raw data (hash-ref e 'crc) (hash-ref e 'usize))]
+             [(0) data]
+             [else #f]))
+         (and out
+              (= (bytes-length out) (hash-ref e 'usize))
+              (= (crc32-bytes out) (hash-ref e 'crc))
+              out))))
+
+;; recovered plaintext bytes for a header-zone entry, or #f
+(define (recover-header-zone-data s e next-e)
+  (define lho (hash-ref e 'lho))
+  (define base (+ lho 30 (bytes-length (hash-ref e 'name))))
+  (define csize (hash-ref e 'csize))
+  ;; exact candidate: back-to-back layout - the next entry's surviving
+  ;; local header sits where this entry's data ended
+  (define derived
+    (and next-e
+         (let ([next-lho (hash-ref next-e 'lho)])
+           (and (>= next-lho zone-limit)
+                (let ([extra (- next-lho base csize)])
+                  (and (<= 0 extra 65535) (+ base extra)))))))
+  ;; bounded sweep of plausible local extra lengths: 0 first (every
+  ;; mainstream writer), then 1..255. Zone giants skip the sweep so the
+  ;; work stays bounded (a few hundred inflations of a huge entry
+  ;; would not).
+  (define sweep
+    (if (> csize 4194304)
+        (list base)
+        (for/list ([extra (in-range 256)]) (+ base extra))))
+  (define candidates (if derived (cons derived sweep) sweep))
+  (for/or ([start (in-list candidates)])
+    (try-zone-entry-span s e start)))
+
 ;; ---------- OOXML rebuild ----------
 
 ;; fresh local headers (extra = 0) + verbatim deflate data + fresh CD and
@@ -477,9 +535,16 @@
   (define ooxml? (eq? resolved-flavor 'ooxml))
   (define verified 0)
   (define rebuilt-count 0)
+  (define recovered-count 0)
   (define replacements (make-hash))
   (define lost-names null)
   (define decrypted-inner 0)
+  ;; the CD entry that follows each entry in write order: back-to-back
+  ;; layout makes the next surviving local header the exact boundary
+  (define next-of
+    (for/hash ([e (in-list entries)] [i (in-naturals)])
+      (values e (and (< i (sub1 (length entries)))
+                     (list-ref entries (add1 i))))))
   (define report
     (for/list ([e entries])
       (define name-bytes (hash-ref e 'name))
@@ -488,11 +553,33 @@
       (define is-dir (zero? (hash-ref e 'csize)))
       (define-values (v rebuilt? lost? wrapped inner-kind)
         (cond
-          ;; header-zone entries: local headers/data overwritten.
+          ;; header-zone entries: damage-based handling. Data past the
+          ;; zone means only the local header is gone - rebuild it from
+          ;; the CD, gated by the entry's own method/CRC/usize (field
+          ;; report 2026-11-17: an owner-added member with lho < 512 was
+          ;; dropped whole even though every content byte survived).
+          ;; Data that starts inside the zone is physically gone:
+          ;; reported lost, never fabricated.
           [(and in-header-zone (not ooxml?) (not is-dir))
-           ;; plain zip: the content bytes exist nowhere in the file
-           (set! lost-names (cons name-bytes lost-names))
-           (values #f #f #t #f #f)]
+           (define recovered
+             (recover-header-zone-data s e (hash-ref next-of e)))
+           (cond
+             [(not recovered)
+              (set! lost-names (cons name-bytes lost-names))
+              (values #f #f #t #f #f)]
+             [(wrapped-bytes? recovered)
+              ;; a recovered member that is itself wrapped gets the same
+              ;; same-pass nested decryption as any other member
+              (define-values (plain inner-kind)
+                (decrypt-nested-entry name-bytes recovered pad depth))
+              (hash-set! replacements name-bytes plain)
+              (set! decrypted-inner (add1 decrypted-inner))
+              (set! recovered-count (add1 recovered-count))
+              (values (hash 'ok #t) #f #f #t inner-kind)]
+             [else
+              (hash-set! replacements name-bytes recovered)
+              (set! recovered-count (add1 recovered-count))
+              (values (hash 'ok #t) #f #f #f #f)])]
           ;; OOXML measured layout: docProps metadata placeholders
           [in-header-zone
            (values (hash 'ok #t 'rebuilt #t) #t #f #f #f)]
@@ -526,6 +613,7 @@
         'verified verified
         'total (length entries)
         'rebuiltEntries rebuilt-count
+        'recoveredEntries recovered-count
         'lostEntries
         (reverse
          (for/list ([n (in-list lost-names)])
@@ -1481,6 +1569,7 @@
             'verified (hash-ref r 'verified)
             'total (hash-ref r 'total)
             'lostEntries (hash-ref r 'lostEntries)
+            'recoveredEntries (hash-ref r 'recoveredEntries)
             'decryptedInner (hash-ref r 'decryptedInner)
             'bytes (hash-ref r 'bytes))))
   (with-output-to-file out-path
