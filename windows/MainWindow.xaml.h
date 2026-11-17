@@ -82,6 +82,14 @@ struct MainWindow : MainWindowT<MainWindow> {
                       Microsoft::UI::Xaml::Controls::InfoBarSeverity severity,
                       std::wstring const& status_message);
 
+  // Win32 shell drop plumbing: Explorer drops never reach the XAML
+  // island in unpackaged WinUI 3, so a window subclass receives
+  // WM_DROPFILES instead (see MainWindow.xaml.cpp). Public because the
+  // subclass proc is a free function, mirroring ShowTextResult.
+  void HandleWin32Drop(HDROP drop);
+  winrt::Microsoft::UI::Xaml::Controls::TextBox DropTargetBox(
+      winrt::Windows::Foundation::Point const& pt);
+
  private:
   winrt::fire_and_forget InitializeBackendAsync();
   void RunScanAsync();
@@ -129,6 +137,10 @@ struct MainWindow : MainWindowT<MainWindow> {
   winrt::hstring last_result_text_;
   // Elevation blocks Explorer drag-drop (UIPI); surfaced in SetReadyUi.
   bool running_elevated_ = false;
+  // The panel currently on screen ("scan" is the XAML's initial
+  // selection): decides which box an off-target Explorer drop falls
+  // back to in DropTargetBox.
+  std::wstring current_panel_tag_ = L"scan";
   // Update flow state: one active download, its start time (the host-side
   // 30-min watchdog), the auto-check toggle, and the progress poll timer.
   bool update_downloading_ = false;
