@@ -509,3 +509,168 @@
    (decrypt-zip (wrap-variant-c
                  (make-two-entry-zip "notes.bin" wrapped-txt "t2"))
                 pad)))
+
+;; ---------- classic-xref straddler layouts (field reports 2026-11) ----------
+
+;; Two field layouts the classic rebuild mishandled (owner reports,
+;; 2026-11): a page object cut mid-reference inside its /Resources
+;; sub-dictionaries rebuilt with an unbalanced prefix, so /MediaBox and
+;; /Contents landed outside the page dictionary and the FIRST page
+;; rendered blank; and a pages-tree ROOT cut mid-/Kids aborted with
+;; "straddling object is not a page". A third report exposed that the
+;; post-rebuild xref spot-check only looked at the last 64 KiB: an xref
+;; table larger than 64 KiB (4 005 entries in the field file) starts
+;; outside that window and was verified not at all. The fixtures below
+;; are fully synthetic: they reproduce the byte GEOMETRY of the field
+;; files (straddler offset, cut position, dict nesting) without
+;; carrying any of their content.
+
+(define (zero10 n)
+  (define d (number->string n))
+  (string-append (make-string (- 10 (string-length d)) #\0) d))
+
+;; assemble a classic-xref PDF from ordered (objnum . text) pairs,
+;; tracking byte offsets, so every xref record is exact by construction
+(define (assemble-classic-pdf objects)
+  (define offsets (make-hash))
+  (define out (open-output-bytes))
+  (define pos 0)
+  (define (emit! b)
+    (write-bytes b out)
+    (set! pos (+ pos (bytes-length b))))
+  (emit! #"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+  (for ([o (in-list objects)])
+    (hash-set! offsets (car o) pos)
+    (emit! (string->bytes/utf-8 (cdr o))))
+  (define max-obj (apply max (map car objects)))
+  (define xref-pos pos)
+  (emit! (string->bytes/utf-8
+          (string-append "xref\r\n0 " (number->string (add1 max-obj))
+                         "\r\n0000000000 65535 f\r\n")))
+  (for ([k (in-range 1 (add1 max-obj))])
+    (emit! (string->bytes/utf-8
+            (if (hash-has-key? offsets k)
+                (string-append (zero10 (hash-ref offsets k)) " 00000 n\r\n")
+                "0000000000 65535 f\r\n"))))
+  (emit! (string->bytes/utf-8
+          (string-append "trailer\r\n<< /Size " (number->string (add1 max-obj))
+                         " /Root 1 0 R >>\r\nstartxref\r\n"
+                         (number->string xref-pos) "\r\n%%EOF\r\n")))
+  (get-output-bytes out))
+
+;; pad with spaces INSIDE an object (between tokens) to a total length
+;; so the fixture controls where byte 512 falls
+(define (pad-inside head tail target-len)
+  (string-append
+   head
+   (make-string (max 0 (- target-len (string-length head)
+                          (string-length tail)))
+               #\space)
+   tail))
+
+;; ---- fixture 1: page straddler cut mid-reference inside /ExtGState ----
+;; geometry of the blank-first-page report: obj 3 starts at 448 and byte
+;; 512 falls between the object number and the generation of "/GS1 1 0 R"
+(define classic-page-objs
+  (list
+   (cons 1 (pad-inside "1 0 obj\n<< /Type /Catalog"
+                       " /Pages 2 0 R >>\nendobj\n" 85))     ; 15..100
+   (cons 2 (pad-inside "2 0 obj\n<< /Type /Pages"
+                       " /Kids[3 0 R 9 0 R] /Count 2 >>\nendobj\n" 348)) ; 100..448
+   (cons 3 (string-append
+            "3 0 obj\n<</Type/Page/Parent 2 0 R/Resources<</ExtGState<</GS1 1 "
+            ;; byte 512 falls here; the tail from 512 is "0 R/GS14 ..."
+            "0 R/GS14 14 0 R>>/XObject<</Im6 6 0 R>>"
+            "/ProcSet[/PDF/Text/ImageB/ImageC/ImageI]>>"
+            "/MediaBox[0 0 960 540] /Contents 5 0 R"
+            "/Group<</Type/Group/S/Transparency/CS/DeviceRGB>>"
+            "/Tabs/S/StructParents 0>>\nendobj\n"))
+   (cons 5 "5 0 obj\n<< /Length 8 >>\nstream\nBT ET\nendstream\nendobj\n")
+   (cons 6 "6 0 obj\n<< /Type /XObject /Subtype /Form /BBox[0 0 100 100] >>\nendobj\n")
+   (cons 9 "9 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox[0 0 960 540] /Contents 5 0 R >>\nendobj\n")
+   (cons 14 "14 0 obj\n<< /CA 1 >>\nendobj\n")))
+(define classic-page-plain (assemble-classic-pdf classic-page-objs))
+;; geometry is load-bearing: the cut must land inside the reference
+(check-equal? (subbytes classic-page-plain 512 515) #"0 R")
+(check-equal? (subbytes classic-page-plain 448 456) #"3 0 obj\n")
+
+(define classic-page-wrapped (wrap-variant-c classic-page-plain))
+(define classic-page (decrypt-pdf classic-page-wrapped pad))
+(check-equal? (hash-ref classic-page 'coverObject) 3)
+(check-equal? (hash-ref classic-page 'pages) 2)
+(check-equal? (hash-ref classic-page 'xrefBad) 0)
+(define cp-out (hash-ref classic-page 'bytes))
+(check-equal? (bytes-length cp-out) (bytes-length classic-page-wrapped))
+(define cp-3
+  (subbytes cp-out 448
+            (cdar (regexp-match-positions #rx#"endobj" cp-out 448))))
+;; every << in the rebuilt straddler must have a matching >>: the old
+;; splice closed the page dictionary early, dropping /MediaBox and
+;; /Contents OUTSIDE the page object (the blank-first-page symptom)
+(check-equal? (length (regexp-match* #rx#"<<" cp-3))
+              (length (regexp-match* #rx#">>" cp-3)))
+;; the cut fragment must heal into a name + indirect reference inside
+;; the inferred /ExtGState container — not the old "/X"+"0 R" splice
+(check-true
+ (regexp-match? #px#"/ExtGState<<\\s*/X\\s+1\\s+0\\s+R\\s*/GS14 14 0 R>>" cp-3))
+;; page-critical keys stay inside the page dictionary, verbatim
+(check-true
+ (regexp-match? #px#"/MediaBox\\[0 0 960 540\\] /Contents 5 0 R" cp-3))
+
+;; ---- fixture 2: pages-tree ROOT straddler cut mid-/Kids ----
+;; geometry of the D04 report: obj 2 (the /Pages root) starts at 100
+;; and byte 512 falls between "3 0 " and "R" of the FIRST kid reference
+(define classic-root-objs
+  (list
+   (cons 1 (pad-inside "1 0 obj\n<< /Type /Catalog"
+                       " /Pages 2 0 R >>\nendobj\n" 85))     ; 15..100
+   (cons 2 (string-append
+            (pad-inside "2 0 obj\n<<" "/Type/Pages/Count 4/Kids[3 0 " 412)
+            ;; byte 512 falls here; the tail from 512 is "R 5 0 R ..."
+            "R 5 0 R 7 0 R 9 0 R] >>\nendobj\n"))
+   (cons 3 "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox[0 0 960 540] /Contents 11 0 R >>\nendobj\n")
+   (cons 5 "5 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox[0 0 960 540] /Contents 11 0 R >>\nendobj\n")
+   (cons 7 "7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox[0 0 960 540] /Contents 11 0 R >>\nendobj\n")
+   (cons 9 "9 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox[0 0 960 540] /Contents 11 0 R >>\nendobj\n")
+   (cons 11 "11 0 obj\n<< /Length 8 >>\nstream\nBT ET\nendstream\nendobj\n")))
+(define classic-root-plain (assemble-classic-pdf classic-root-objs))
+(check-equal? (subbytes classic-root-plain 512 514) #"R ")
+(check-equal? (subbytes classic-root-plain 100 108) #"2 0 obj\n")
+(define classic-root-wrapped (wrap-variant-c classic-root-plain))
+;; pre-fix this raised "straddling object is not a page"; post-fix the
+;; root rebuilds around the surviving kid references
+(define classic-root
+  (with-handlers ([exn:fail? (lambda (_) #f)])
+    (decrypt-pdf classic-root-wrapped pad)))
+(check-true (hash? classic-root))
+(when (hash? classic-root)
+  (check-equal? (hash-ref classic-root 'coverObject) 2)
+  (check-equal? (hash-ref classic-root 'pages) 4)
+  (check-equal? (hash-ref classic-root 'xrefBad) 0)
+  (define cr-out (hash-ref classic-root 'bytes))
+  (check-equal? (bytes-length cr-out) (bytes-length classic-root-wrapped))
+  ;; the lost head of /Kids comes back from the xref scan: all four kid
+  ;; references present, the cut one healed from its lost prefix
+  (define cr-2
+    (subbytes cr-out 100
+              (cdar (regexp-match-positions #rx#"endobj" cr-out 100))))
+  (check-true
+   (regexp-match? #px#"/Kids\\[\\s*3\\s+0\\s+R\\s*5 0 R 7 0 R 9 0 R\\]\\s*>>" cr-2))
+  (check-true (regexp-match? #px#"/Count\\s+4\\b" cr-2))
+  ;; the rebuilt catalog (head zone) points at the straddled root
+  (check-true (regexp-match? #px#"/Type /Catalog /Pages 2 0 R"
+                             (subbytes cr-out 15 70))))
+
+;; ---- fixture 3: xref spot-check must reach a table >64 KiB from EOF ----
+;; a 3 400-entry table (80 KiB) puts the table START beyond the old
+;; 64 KiB look-back window, so the post-rebuild spot-check verified
+;; NOTHING (checked=0) while the decrypt claimed success
+(define filler-objs
+  (for/list ([k (in-range 20 3400)])
+    (cons k (format "~a 0 obj\n<< /Type /F >>\nendobj\n" k))))
+(define big-xref-wrapped
+  (wrap-variant-c
+   (assemble-classic-pdf (append classic-page-objs filler-objs))))
+(define big-xref (decrypt-pdf big-xref-wrapped pad))
+(check-equal? (hash-ref big-xref 'xrefBad) 0)
+(check-true (>= (hash-ref big-xref 'xrefChecked) 3000))
