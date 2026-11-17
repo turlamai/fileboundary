@@ -8,10 +8,10 @@
 
 **v0.2.0 已发布** —— 对抗恢复核心已在无界面 CLI 上产品化（[发布页](https://github.com/turlamai/fileboundary/releases/tag/v0.2.0)）。按工程宪章的三层如实记账：
 
-- **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头重建 + xref 抽查）、wrapped 普通 zip 档案（逐条目 CRC 验证，内部带壳文件同一遍解密，无法离线恢复的头区条目以 lostEntries 报告）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
-- **已实现、本机已验证**：完整测试套件（194 项 + JSON Schema 契约校验）在 Windows 全绿，含三个 pin 定真实样本的端到端解密（[ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)）。CI 运行暂被账号账单阻塞——恢复前合并门禁由审查执行。
+- **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头按对象原始偏移重建——经典表与压缩 xref 流条目保持一致——并做全文档 xref 抽查）、wrapped 普通 zip 档案（逐条目 CRC 验证，内部带壳文件同一遍解密，无法离线恢复的头区条目以 lostEntries 报告）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
+- **已实现、本机已验证**：完整测试套件（310 项 + JSON Schema 契约校验）在 Windows 全绿（两个符号链接 fixture 测试需要提权 shell 或 Windows 开发人员模式才能创建链接），含三个 pin 定真实样本的端到端解密（[ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)）。CI 运行暂被账号账单阻塞——恢复前合并门禁由审查执行。
 - **发布列车**（[#9](https://github.com/turlamai/fileboundary/issues/9)、[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）：打 tag 触发 [release 工作流](.github/workflows/release.yml)，构建便携包、自更新全量包 + `manifest.json`、源码包、`SHA256SUMS.txt` 与逐文件校验和，对产物做冒烟（净目录解压、GUI 启动探针、CLI 信封、净安装根 update-apply），并以英文说明发布私有 Release。按 ADR-0010（修订 ADR-0008），**MSI 为主要安装面**；便携 zip 与显式自更新命令继续保留。
-- GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。
+- GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。每个路径输入框既支持浏览选择，也支持直接拖入文件。
 
 既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turlamai/fileboundary/issues/1)）。
 
@@ -79,7 +79,7 @@ FileBoundary 的目标是让这一局面变得可度量、可破解：所有者�
 1. **分析加密机制** —— 枚举 minifilter、过滤驱动与服务配置、注入模块、hook 启发式检测，以及探针文件上的 I/O 行为（[#3](https://github.com/turlamai/fileboundary/issues/3)）。
 2. **诊断** —— 输出机器可读的报告：当前过滤栈与各进程的读写行为。
 3. **盘点加密文件** —— 批量扫描磁盘，按加密可能性分类，记录文件状态、SHA-256 与格式信息（[#4](https://github.com/turlamai/fileboundary/issues/4)）。
-4. **恢复——不设渠道限制、全程离线** —— T0 破密已产品化：`decrypt` 用策略 pad 重构封装的 OOXML（docx/xlsx/pptx，逐条目 CRC 验证）与封装的 PDF（语义头重建 + xref 抽查）；`pad twin` 从一对对齐的明文/密文恢复策略 pad（[#5](https://github.com/turlamai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
+4. **恢复——不设渠道限制、全程离线** —— T0 破密已产品化：`decrypt` 用策略 pad 重构封装的 OOXML（docx/xlsx/pptx，逐条目 CRC 验证）与封装的 PDF（语义头按原始偏移重建 + 全文档 xref 抽查）；`pad twin` 从一对对齐的明文/密文恢复策略 pad（[#5](https://github.com/turlamai/fileboundary/issues/5)、[研究纲领](docs/adversarial-research.md)）。
 5. **验证完整性** —— 恢复文件只有通过完整验证管线才可标记 `verified`；复制成功不等于解密成功（[#5](https://github.com/turlamai/fileboundary/issues/5)）。
 6. **管理恢复流程** —— 基于 manifest 的选择、每次尝试的审计记录、恢复集合与 manifest 的对账（[docs/recovery-workflow.md](docs/recovery-workflow.md)）。
 7. **两个前端** —— 原生 Windows GUI，以及为 agent 与自动化提供版本化 JSON 契约的 CLI（[#7](https://github.com/turlamai/fileboundary/issues/7)）。
