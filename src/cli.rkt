@@ -249,13 +249,22 @@
        (define out-path (hash-ref flags "--out" (lambda () #f)))
        (define pad-path (hash-ref flags "--pad" (lambda () #f)))
        (if (and in-path out-path pad-path)
-           (let ([report (decrypt-file in-path out-path pad-path)])
+           (let* ([report (decrypt-file in-path out-path pad-path)]
+                  [dangling (hash-ref report 'danglingRefs '())])
              (values 0 "ok"
                      (hash-set report
                                'output
                                (path->string
                                 (file-name-from-path out-path)))
-                     '() '()))
+                     (if (null? dangling)
+                         '()
+                         (list (coded "unresolvedRefs"
+                                      (string-append
+                                       "Some references resolve to no surviving"
+                                       " object (see danglingRefs; headLost names"
+                                       " the objects the wrapper head zone"
+                                       " destroyed) — those parts render blank."))))
+                     '()))
            (bad-usage)))]
     [(equal? command "pad")
      (pad-command rest)]

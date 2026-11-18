@@ -1056,7 +1056,9 @@
 ;; collect intact top-level "N 0 obj ... endobj" objects from the
 ;; decrypted body: deduplicated by object number, non-overlapping
 ;; spans, stale xref streams and compressed object streams counted
-;; separately (their contents cannot be salvaged here)
+;; separately (their contents cannot be salvaged here — but the xref
+;; streams are returned as byte strings: their records are the
+;; original document's authoritative object inventory, issue #62)
 (define (salvage-objects s body-start)
   (define matches
     (sort
@@ -1068,6 +1070,7 @@
   (define spans null)
   (define objstms 0)
   (define objstm-objs null)
+  (define xref-objs null)
   ;; sanity for a captured span: real top-level objects open with a
   ;; dict or array, and endobj follows endstream (stream objects) or
   ;; >> (plain dicts). Binary noise inside large streams matches the
@@ -1120,12 +1123,13 @@
             (set! spans (cons (cons start end-abs) spans))
             (define obj (subbytes s start end-abs))
             (cond
-              ((regexp-match? #px#"/Type\\s*/XRef\\b" obj) (void))
-              ((regexp-match? #px#"/Type\\s*/ObjStm\\b" obj)
+              ((regexp-match? #px"/Type\\s*/XRef\\b" obj)
+               (set! xref-objs (cons obj xref-objs)))
+              ((regexp-match? #px"/Type\\s*/ObjStm\\b" obj)
                (set! objstms (add1 objstms))
                (set! objstm-objs (cons obj objstm-objs)))
               (else (hash-set! seen num obj))))))))
-  (values seen objstms objstm-objs))
+  (values seen objstms objstm-objs xref-objs))
 
 ;; ---------- compressed object streams (PDF 1.5 ObjStm) ----------
 
@@ -1344,13 +1348,114 @@
                           (subbytes obj hit))
             obj))))
 
+;; ---------- surviving xref-stream accounting (issue #62) ----------
+
+;; /Index subsection list: (start . count) pairs
+(define (xrefstm-sections idx)
+  (let loop ((xs idx) (acc '()))
+    (if (or (null? xs) (null? (cdr xs)))
+        (reverse acc)
+        (loop (cddr xs) (cons (cons (car xs) (cadr xs)) acc)))))
+
+;; decode the records of one surviving /Type/XRef stream object: the
+;; original document's authoritative inventory as a list of
+;; (num type field2) — field2 is the byte offset for type 1 and the
+;; owning object-stream number for type 2. #f when the dict or the
+;; compressed payload cannot be decoded. A zero-width /W type column
+;; defaults every record to type 1 per the spec.
+(define (xrefstm-records obj)
+  (define wm (regexp-match #px"/W\\s*\\[\\s*([0-9]+)\\s+([0-9]+)\\s+([0-9]+)\\s*\\]" obj))
+  (define data (and wm (objstm-stream-data obj)))
+  (define dec (and data (inflate-zlib data)))
+  (and wm dec
+       (let* ((w1 (string->number (bytes->string/utf-8 (cadr wm))))
+              (w2 (string->number (bytes->string/utf-8 (caddr wm))))
+              (w3 (string->number (bytes->string/utf-8 (cadddr wm))))
+              (stride (+ w1 w2 w3))
+              (size-m (regexp-match #px"/Size\\s+([0-9]{1,10})" obj))
+              (size (and size-m
+                         (string->number
+                          (bytes->string/utf-8 (cadr size-m)))))
+              (idx-m (regexp-match #px"/Index\\s*\\[([^\\]]*)\\]" obj))
+              (idx (if idx-m
+                       (map (lambda (b)
+                              (string->number (bytes->string/utf-8 b)))
+                            (regexp-match* #px"[0-9]+" (cadr idx-m)))
+                       (and size (list 0 size)))))
+         (and idx (even? (length idx)) (> stride 0)
+              (<= (* (for/sum ((sec (in-list (xrefstm-sections idx))))
+                       (cdr sec))
+                    stride)
+                  (bytes-length dec))
+              (let section-loop ((sections (xrefstm-sections idx))
+                                 (o 0)
+                                 (acc '()))
+                (if (null? sections)
+                    (reverse acc)
+                    (let record-loop ((k 0) (o o) (acc acc))
+                      (if (= k (cdar sections))
+                          (section-loop (cdr sections) o acc)
+                          (record-loop
+                           (add1 k) (+ o stride)
+                           (cons (list (+ (caar sections) k)
+                                       (if (zero? w1) 1 (bytes-ref dec o))
+                                       (for/fold ((v 0)) ((i (in-range w2)))
+                                         (+ (* v 256)
+                                            (bytes-ref dec (+ o w1 i)))))
+                                 acc))))))))))
+
+;; field-report accounting for the salvage rebuild: which objects the
+;; wrapper's destroyed head zone provably took (type-1 records whose
+;; offset sits below body-start and whose number no surviving object
+;; supplies), read from the newest surviving xref stream (incremental
+;; updates append, so the last in file order is authoritative)
+(define (xrefstm-head-lost xref-objs objs body-start)
+  (define inv (and (pair? xref-objs)
+                   (xrefstm-records (car xref-objs))))
+  (values (and inv #t)
+          (if inv
+              (sort (remove-duplicates
+                     (for/list ((r (in-list inv))
+                                #:when (and (= (cadr r) 1)
+                                            (< (caddr r) body-start)
+                                            (not (hash-has-key? objs (car r)))))
+                       (car r)))
+                    <)
+              '())))
+
+;; references that no salvaged or rebuilt object resolves — the
+;; blank-page signal. Computed from dict-side bytes only (stream
+;; payloads are compressed binary whose chance matches are noise);
+;; the xref streams are never emitted, so their /Root cannot
+;; false-positive.
+(define (dangling-refs nums objs rebuilt-nums)
+  (define all-refs
+    (for/fold ((acc '()))
+              ((n (in-list nums)))
+      (define obj (hash-ref objs n))
+      (define sm (bytes-find obj #"stream"))
+      (define dict-side (if sm (subbytes obj 0 sm) obj))
+      (append
+       acc
+       (for/list ((m (in-list (regexp-match*
+                              #px"(?<![0-9])([0-9]{1,6})[ ]+0[ ]R"
+                              dict-side #:match-select cadr))))
+         (string->number (bytes->string/utf-8 m))))))
+  (sort (remove-duplicates
+         (filter (lambda (r)
+                   (not (or (hash-has-key? objs r)
+                            (member r rebuilt-nums))))
+                 all-refs))
+        <))
+
 ;; rebuild a fresh document skeleton (new catalog + flat pages tree +
 ;; new classic xref + trailer) around the salvaged objects. Page
 ;; objects keep their original numbers; the catalog and pages tree get
 ;; numbers above every salvaged one. /MediaBox is inherited from a
 ;; salvaged /Type/Pages node when the leaves rely on it (A4 otherwise).
 (define (decrypt-pdf-salvage s body-start)
-  (define-values (objs objstms objstm-objs) (salvage-objects s body-start))
+  (define-values (objs objstms objstm-objs xref-objs)
+    (salvage-objects s body-start))
   ;; unfold compressed object streams: the page tree of PDF 1.5+
   ;; documents lives there; independent objects win on number clashes
   (define objstm-unfolded
@@ -1412,6 +1517,13 @@
     (hash-set! objs n (inject-mediabox (hash-ref objs n) box)))
   (define kids
     (string-join (for/list ((n (in-list pages-src))) (format "~a 0 R" n)) " "))
+  ;; issue #62: losses proven by the surviving xref stream (objects
+  ;; the destroyed head zone took) and references no rebuilt object
+  ;; resolves — the silent-blank-page failure mode
+  (define-values (xrefstm-used head-lost)
+    (xrefstm-head-lost xref-objs objs body-start))
+  (define dangling
+    (dangling-refs nums objs (list cat-num pages-num)))
   (define parts null)
   (define offsets (make-hash))
   (define pos 0)
@@ -1473,7 +1585,10 @@
         'xrefBad bad
         'headRebuilt #t
         'coverObject #f
-        'pages (length pages-src)))
+        'pages (length pages-src)
+        'xrefstmUsed xrefstm-used
+        'headLost head-lost
+        'danglingRefs dangling))
 
 ;; ---------- pad from a known-plaintext twin ----------
 
@@ -1562,6 +1677,9 @@
                              'coverObject (hash-ref r 'coverObject)
                              'xrefChecked (hash-ref r 'xrefChecked)
                              'xrefBad (hash-ref r 'xrefBad)
+                             'xrefstmUsed (hash-ref r 'xrefstmUsed #f)
+                             'headLost (hash-ref r 'headLost '())
+                             'danglingRefs (hash-ref r 'danglingRefs '())
                              'bytes (hash-ref r 'bytes)))])
       (define r (decrypt-zip ct pad))
       (hash 'kind (hash-ref r 'kind)

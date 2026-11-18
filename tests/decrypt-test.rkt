@@ -8,6 +8,7 @@
 (require rackunit
          json
          racket/file
+         racket/list
          racket/port
          racket/runtime-path
          racket/string
@@ -331,6 +332,103 @@
                  (regexp-match? #rx"references 1 absent" truncated-msg)
                  (string-contains? truncated-msg "absent one(s): 3 ")
                  (regexp-match? #rx"truncated or pad covers only part" truncated-msg)))
+
+;; ---------- salvage: xref-stream loss accounting (issue #62) ----------
+
+;; Field profile 2026-11-18 (pdfcpu-style xref-stream writer): the
+;; wrapper's 512-byte head zone physically destroyed the catalog and
+;; one page content stream, while the tail's /Type/XRef stream
+;; survived intact as the authoritative inventory. The rebuild still
+;; recovers every survivor and succeeds — but the report must name
+;; the destroyed objects (headLost, read from the xref stream) and
+;; the references no salvaged or rebuilt object resolves
+;; (danglingRefs), instead of shipping a silent blank page under an
+;; ok verdict.
+
+;; W [1 3 2] record fields: type, 3-byte offset/objstm, 2-byte gen/index
+(define (u24 n)
+  (bytes (bitwise-and (arithmetic-shift n -16) 255)
+         (bitwise-and (arithmetic-shift n -8) 255)
+         (bitwise-and n 255)))
+(define (u16 n)
+  (bytes (bitwise-and (arithmetic-shift n -8) 255)
+         (bitwise-and n 255)))
+(define (xrec t f2 f3)
+  (bytes-append (bytes t) (u24 f2) (u16 f3)))
+
+(define xstm-head (string->bytes/utf-8 (make-string 512 #\A)))
+(define xstm-o1
+  (string->bytes/utf-8 "1 0 obj\n<< /Type /Pages /Kids [2 0 R] /Count 1 >>\nendobj\n"))
+(define xstm-o2
+  (string->bytes/utf-8 "2 0 obj\n<< /Type /Page /Parent 1 0 R /Contents 7 0 R >>\nendobj\n"))
+(define xstm-o3
+  (string->bytes/utf-8 "3 0 obj\n<< /Length 8 >>\nstream\nBT ET\nendstream\nendobj\n"))
+(define xstm-resident #"4 0 << /Kind /Marker >>\n")
+(define xstm-inner (zlib-deflate xstm-resident))
+(define xstm-o8
+  (bytes-append
+   (string->bytes/utf-8
+    (string-append
+     "8 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length "
+     (number->string (bytes-length xstm-inner)) " >>\nstream\n"))
+   xstm-inner
+   #"\nendstream\nendobj\n"))
+(define xstm-o9-dict
+  (string-append
+   "9 0 obj\n<< /Filter /FlateDecode /Index [0 6 7 3] /Root 5 0 R /Size 10"
+   " /Type /XRef /W [1 3 2] >>\nstream\n"))
+(define xstm-segs (list xstm-head xstm-o1 xstm-o2 xstm-o3 xstm-o8))
+(define (xstm-off target)
+  (let loop ((acc 0) (ss xstm-segs))
+    (if (eq? (car ss) target)
+        acc
+        (loop (+ acc 1 (bytes-length (car ss))) (cdr ss)))))
+;; records for /Index [0 6 7 3]: objects 0-5 and 7-9; the catalog (5,
+;; /Root) and the page content stream (7) claim head-zone offsets
+(define xstm-recs
+  (apply bytes-append
+         (list (xrec 0 0 0)
+               (xrec 1 (xstm-off xstm-o1) 0)
+               (xrec 1 (xstm-off xstm-o2) 0)
+               (xrec 1 (xstm-off xstm-o3) 0)
+               (xrec 2 8 0)
+               (xrec 1 100 0)
+               (xrec 1 250 0)
+               (xrec 1 (xstm-off xstm-o8) 0)
+               (xrec 1 (+ (xstm-off xstm-o8) (bytes-length xstm-o8) 1) 0))))
+(define xstm-payload (zlib-deflate xstm-recs))
+(define xstm-o9
+  (bytes-append
+   (string->bytes/utf-8 xstm-o9-dict)
+   xstm-payload
+   #"\nendstream\nendobj\n"))
+(define xstm-body
+  (xor-pad
+   (apply bytes-append
+          (add-between (append xstm-segs (list xstm-o9)) #"\n"))
+   pad))
+(define xstm-ok (decrypt-pdf xstm-body pad))
+(check-equal? (hash-ref xstm-ok 'pages) 1)
+(check-equal? (hash-ref xstm-ok 'xrefBad) 0)
+;; the surviving xref stream was decoded and trusted for accounting
+(check-true (hash-ref xstm-ok 'xrefstmUsed))
+;; objects 5 (catalog) and 7 (content stream) sat in the destroyed zone
+(check-equal? (hash-ref xstm-ok 'headLost) '(5 7))
+;; only object 7 is referenced by a survivor: the blank-page signal
+(check-equal? (hash-ref xstm-ok 'danglingRefs) '(7))
+
+;; without an xref stream there is no authoritative inventory: the
+;; accounting fields stay empty and the rebuild behaves as before
+(define no-xstm-ok
+  (decrypt-pdf
+   (xor-pad
+    (apply bytes-append
+           (add-between (list xstm-head xstm-o1 xstm-o2 xstm-o3) #"\n"))
+    pad)
+   pad))
+(check-equal? (hash-ref no-xstm-ok 'pages) 1)
+(check-equal? (hash-ref no-xstm-ok 'headLost) '())
+(check-equal? (hash-ref no-xstm-ok 'danglingRefs) '(7))
 
 ;; ---------- wrapped plain zip + nested entry decryption ----------
 
