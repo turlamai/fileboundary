@@ -980,6 +980,8 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
       auto const pages = static_cast<int>(obj.GetNamedNumber(L"pages"));
       auto const xref_checked = static_cast<int>(obj.GetNamedNumber(L"xrefChecked"));
       auto const xref_bad = static_cast<int>(obj.GetNamedNumber(L"xrefBad"));
+      auto const dangling = obj.GetNamedArray(L"danglingRefs");
+      auto const head_lost = obj.GetNamedArray(L"headLost");
       title = (xref_bad == 0) ? L"解密成功" : L"解密完成（交叉引用有损坏）";
       body = L"PDF 已重建：共 " + std::to_wstring(pages) + L" 页，交叉引用校验 " +
              std::to_wstring(xref_checked) + L" 处（损坏 " +
@@ -987,6 +989,20 @@ void MainWindow::ShowDecryptResult(std::string const& json) {
              std::wstring{winrt::to_hstring(output).c_str()} +
              (head_rebuilt ? L"\n文件头已重建，可用 PDF 阅读器直接打开。原始文件未被改动。"
                            : L"\n原始文件未被改动。");
+      if (dangling.Size() > 0) {
+        title = L"解密完成（有内容缺失）";
+        body += L"\n\u26a0 有 " + std::to_wstring(dangling.Size()) +
+                L" 处引用指向未幸存的对象，对应位置会渲染成空白（如整页空白）。";
+        if (head_lost.Size() > 0) {
+          body += L"加密壳覆盖了文件头部的对象：";
+          for (auto const& item : head_lost) {
+            body += L" #" +
+                    std::to_wstring(static_cast<int>(item.GetNumber()));
+          }
+          body += L"。";
+        }
+        body += L"缺失内容不在加密文件里，无法离线恢复，请从原始来源重新获取。";
+      }
     }
     ResultCard().Visibility(Microsoft::UI::Xaml::Visibility::Visible);
     SetResultCollapsed(false);

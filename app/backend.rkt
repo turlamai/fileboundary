@@ -44,6 +44,8 @@
              'coverObject (hash-ref report 'coverObject)
              'xrefChecked (hash-ref report 'xrefChecked)
              'xrefBad (hash-ref report 'xrefBad)
+             'headLost (hash-ref report 'headLost '())
+             'danglingRefs (hash-ref report 'danglingRefs '())
              'output out-name))
       (jsexpr->string
        (hash 'kind (hash-ref report 'kind)
