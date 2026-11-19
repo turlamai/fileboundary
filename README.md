@@ -1,5 +1,7 @@
 # FileBoundary
 
+**Support:** [Issues & feedback](https://github.com/turlamai/fileboundary/issues) · [Development policy](https://github.com/turlamai/turlamai.github.io/blob/master/PORTFOLIO.md)
+
 **Windows-native file encryption diagnostics and adversarial recovery research toolkit. Local-first, with a native Windows GUI and an agent-friendly CLI.**
 
 **English** · [中文](README.zh-CN.md)
