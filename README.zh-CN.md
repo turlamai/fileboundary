@@ -1,5 +1,7 @@
 # FileBoundary
 
+**支持：**[问题与反馈](https://github.com/turlamai/fileboundary/issues) · [当前交付策略](https://github.com/turlamai/turlamai.github.io/blob/master/PORTFOLIO.zh-CN.md)
+
 **Windows 原生的文件加密诊断与对抗恢复研究工具集。本地优先，原生 Windows GUI 与 agent 友好 CLI。**
 
 [English](README.md) · **中文**
