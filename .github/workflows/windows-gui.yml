@@ -32,7 +32,7 @@ jobs:
       - name: Install pinned Rivet v0.14.0
         shell: pwsh
         run: |
-          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#179319936c6a22b2fa676c0fd557bcdb05ee5205'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#c1f0d921e2136c0cfb2c1c1f6d273f2b26222a19'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
       - name: Check native Windows toolchain
         shell: pwsh
