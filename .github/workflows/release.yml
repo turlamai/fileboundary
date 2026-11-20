@@ -48,7 +48,7 @@ jobs:
       - name: Install pinned Rivet v0.14.0
         shell: pwsh
         run: |
-          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#v0.15.0'
+          raco pkg install --auto --no-docs 'https://github.com/turlamai/rivet.git#c1f0d921e2136c0cfb2c1c1f6d273f2b26222a19'
           if ($LASTEXITCODE -ne 0) { throw "Rivet installation failed" }
 
       # rivet's MSI builder drives WiX 5 (the 7.x line aborts with WIX7015
@@ -103,7 +103,7 @@ jobs:
           echo "RIVET_UPDATE_PUBLIC_DER=$work/update-public-key.der" >> "$GITHUB_ENV"
 
       # one shot: builds the host, packages, produces the perMachine MSI
-      # (start-menu + desktop shortcuts) and the portable zip with family
+      # (start-menu only; no forced desktop shortcut) and the portable zip with family
       # naming, plus SBOM/notices. The unpacked app tree is deleted by
       # rivet afterwards (the taskly 0.1.3 lesson), so the portable zip
       # post-processing step re-extracts it. The signed update feed is
@@ -205,7 +205,7 @@ jobs:
 
           ## What shipped
 
-          - **Windows installer** (`fileboundary-__VERSION__-windows-x64.msi`): per-machine install with Start-menu and desktop shortcuts - the recommended way to install.
+          - **Windows installer** (`fileboundary-__VERSION__-windows-x64.msi`): streamlined per-machine installation with one Start-menu entry, no unsolicited desktop shortcut - the recommended way to install.
           - Portable Windows x86_64 application (`fileboundary-__VERSION__-windows-x64.zip`): self-contained WinUI 3 host - no Racket or runtime prerequisite; unpack anywhere, read the README.txt inside, run `RivetHost.exe` (or `FileBoundary.cmd`).
           - Signed update feed (`update-stable.json`): Ed25519-signed rivet update manifest; the GUI checks, downloads (with progress and cancel), and installs in-app after an explicit consent.
           - Source distribution (`FileBoundary-v__VERSION__-source.tar.gz`): headless CLI (`racket src/cli.rkt`) requiring Racket CS 9.3 - the normative, agent-facing interface.
