@@ -23,9 +23,9 @@ The Windows core CI now also checks `version`, `scan`, `doctor` and `verify` aga
 
 ### Install (Windows)
 
-- **Installer (recommended)** — run `fileboundary-<version>-windows-x64.msi` from [Releases](https://github.com/turlamai/fileboundary/releases): per-machine install with Start-menu and desktop shortcuts ([ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md)).
+- **Installer (recommended)** — run `fileboundary-<version>-windows-x64.msi` from [Releases](https://github.com/turlamai/fileboundary/releases): streamlined per-machine install with one Start-menu shortcut, no forced desktop icon, and normal Windows elevation ([ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md)).
 - **Portable GUI (no prerequisites)** — download `fileboundary-<version>-windows-x64.zip`, unzip anywhere, and run `RivetHost.exe` (or `FileBoundary.cmd`); the `README.txt` inside explains the panels.
-- **Update channel** — an existing install moves to a new version with `update now` (or offline `update apply --package <zip> --manifest <manifest.json>`); installs live under `%LOCALAPPDATA%\FileBoundary\releases\<version>\`. There is no MSI/MSIX by design ([ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)).
+- **Update channel** — an existing install moves to a new version with `update now` (or offline `update apply --package <zip> --manifest <manifest.json>`); installs live under `%LOCALAPPDATA%\FileBoundary\releases\<version>\`. The MSI is the primary install route per [ADR-0010](docs/decisions/ADR-0010-windows-msi-install-face.md); the earlier no-MSI policy in ADR-0008 is superseded.
 - **Headless CLI** — requires Racket CS 9.3; use the source distribution (`FileBoundary-v<version>-source.tar.gz`).
 
 ### Headless CLI from source
