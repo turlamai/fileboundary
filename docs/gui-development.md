@@ -47,6 +47,12 @@ Alignment matters: documents that merely share content are not twins. Misaligned
 
 Acceptance: recover from an aligned pair, confirm `covered: 512, complete: true`, then use the recovered pad to decrypt a wrapped file and confirm full CRC verification.
 
+## Drag-and-drop threading rule
+
+Every path box accepts drops through two channels that may both fire for one drop: the top-level HWND's `WM_DROPFILES` subclass (synchronous, always on the UI thread; this is what Explorer drags normally hit) and the XAML `DragOver`/`Drop` handlers (the fallback for hosts where OLE reaches the island, and the source of the copy cursor). Filling a box from either channel is idempotent.
+
+The XAML channel has to await `GetStorageItemsAsync()` under a drop deferral, and that await resumes on a threadpool thread. The deferral, the sender `TextBox` and the window are apartment-bound to the UI thread: calling any of them after the await raises `RPC_E_WRONG_THREAD`, fails the process fast in the middle of the drop and leaves the shell's drag image on screen (the "drop freezes the window" crash). The invariant is therefore: after the `co_await`, the handler only produces plain data (a path or a failure flag) and hops back with `DispatcherQueue::TryEnqueue`; XAML objects are touched only inside the dispatcher lambda, and `deferral.Complete()` is the last call there. `tests/gui-drop-test.rkt` locks this shape; the GUI smoke gate still covers the live Explorer drag.
+
 ## Not yet supported
 
 No GUI progress/cancel UI, persistent manifest, independent full PDF/7z/DOCX structural validation, automated vendor-authorized export adapter, or installer is delivered by this slice. The implemented export **comparison** is an incomplete verification stage, not decryption. A successful build alone is not evidence of successful data recovery. GUI smoke on an interactive Windows 10/11 desktop is a separate gate before release. The package target may need a runtime prerequisite unless clean-machine tests establish otherwise.
