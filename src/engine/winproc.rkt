@@ -21,7 +21,8 @@
 (provide has-console?
          windows-quote-arg
          run-child*/exit-code
-         run-hidden-capture)
+         run-hidden-capture
+         decode-console-bytes)
 
 ;; MSVCRT argv quoting: quote when empty / whitespace / a quote is
 ;; present; double backslashes that precede a quote or the end of a
@@ -95,10 +96,12 @@
   (require ffi/unsafe
            ffi/unsafe/define
            racket/file
-           racket/string)
+           racket/string
+           "win-text.rkt")
   (provide has-console?
            run-hidden*/exit-code
-           run-hidden-capture)
+           run-hidden-capture
+           decode-console-bytes)
 
   ;; Submodules cannot see the parent's definitions; the quoting rules
   ;; live here too (kept in sync with the parent copy, which exists for
@@ -266,9 +269,31 @@
       (for ([f (in-list (list out-tmp err-tmp))])
         (with-handlers ([exn:fail? void]) (delete-file f)))
       (values code
-              (bytes->string/latin-1 out)
-              (bytes->string/latin-1 err)
-              timed-out?))))
+              (decode-console-bytes out)
+              (decode-console-bytes err)
+              timed-out?)))
+
+  ;; Console tools write text in the system code page (GBK on Chinese
+  ;; Windows); latin-1 turned "拒绝访问" into mojibake, so no message
+  ;; pattern could ever match it. Valid UTF-8 (Racket children) passes
+  ;; through unchanged; anything else goes through MultiByteToWideChar
+  ;; with the ANSI code page, falling back to latin-1 if that fails.
+  (define-kernel32 GetACP (_fun -> _uint32))
+  (define-kernel32 MultiByteToWideChar
+    (_fun _uint32 _uint32 _bytes _int32 _pointer _int32 -> _int32))
+
+  (define (decode-console-bytes b)
+    (with-handlers ([exn:fail?
+                     (lambda (_)
+                       (let* ([n (bytes-length b)]
+                              [w (MultiByteToWideChar (GetACP) 0 b n #f 0)])
+                         (if (<= w 0)
+                             (bytes->string/latin-1 b)
+                             (let ([buf (malloc (* 2 w) 'raw)])
+                               (if (<= (MultiByteToWideChar (GetACP) 0 b n buf w) 0)
+                                   (bytes->string/latin-1 b)
+                                   (utf16le->string (pointer->bytes buf (* 2 w))))))))])
+      (bytes->string/utf-8 b))))
 
 ;; Unified entry points. Windows GUI hosts go through the FFI path;
 ;; Windows console processes (the CLI) keep the plain system* path so
@@ -297,6 +322,18 @@
        (local-require (only-in (submod "." ffi-impl) run-hidden-capture))
        (run-hidden-capture exe argv timeout-seconds))]
     [else (posix-capture exe argv timeout-seconds)]))
+
+;; Text of a console tool's captured output in the system code page.
+(define (decode-console-bytes b)
+  (case (system-type)
+    [(windows)
+     (let ()
+       (local-require (prefix-in ffi: (only-in (submod "." ffi-impl)
+                                               decode-console-bytes)))
+       (ffi:decode-console-bytes b))]
+    [else
+     (with-handlers ([exn:fail? (lambda (_) (bytes->string/latin-1 b))])
+       (bytes->string/utf-8 b))]))
 
 ;; Diagnostic probe for callers that branch on console availability.
 (define (has-console?)

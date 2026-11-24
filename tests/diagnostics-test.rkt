@@ -2,7 +2,8 @@
 
 (require rackunit
          (submod "../src/engine/diagnostics.rkt" test-support)
-         "../src/engine/diagnostics.rkt")
+         "../src/engine/diagnostics.rkt"
+         "../src/engine/winproc.rkt")
 
 (check-equal? (classify-fltmc-result 0 "") "ok")
 (check-equal? (classify-fltmc-result 1 "Access is denied.")
@@ -28,6 +29,17 @@
   (check-true (hash-has-key? check 'truncated))
   (check-true (exact-integer? (hash-ref check 'capturedAtUnixMs)))
   (check-true (exact-nonnegative-integer? (hash-ref check 'durationMs))))
+;; The registry listing is the primary filter inventory: on Windows it
+;; comes from the registry API (no child process) and carries the Group.
+(define registry-check (hash-ref checks 'registryFilters))
+(when (eq? (system-type 'os) 'windows)
+  (check-equal? (hash-ref registry-check 'status) "ok")
+  (check-equal? (hash-ref registry-check 'source) "registry-api")
+  (check-true (pair? (hash-ref registry-check 'filters)))
+  (for ([row (in-list (hash-ref registry-check 'filters))])
+    (check-true (hash-has-key? row 'group))
+    (check-true (hash-has-key? row 'start))))
+(check-true (list? (hash-ref (hash-ref checks 'signatureHeuristics) 'encryptionGroup)))
 
 ;; A child process may flood stdout; the capture budget is bounded even if
 ;; the input stream is larger and must still be fully drained.
@@ -82,6 +94,46 @@
 ;; generic failure (the operator-facing remedy depends on it)
 (check-equal? (classify-fltmc-result 5 "拒绝访问。") "requiresElevation")
 (check-equal? (classify-fltmc-result 5 "请求的操作需要提升。") "requiresElevation")
+;; `fltmc instances` exits 0 on a denied query (measured on Windows 11
+;; 24H2) and the message is GBK on Chinese Windows, which the latin-1
+;; capture turns into mojibake. The HRESULT is the only language- and
+;; exit-code-independent evidence, so it must win in every combination.
+(check-equal? (classify-fltmc-result 0
+                                  "\r\n筛选器实例列表失败，出现错误: 0x80070005\r\n")
+              "requiresElevation")
+(check-equal? (classify-fltmc-result 0 "Filter list failed with error: 0x80070005")
+              "requiresElevation")
+(check-equal? (classify-fltmc-result 1 "\r\nÉ¸Ñ¡Æ÷ÁÐ±íÊ§°Ü£¬³öÏÖ´íÎó: 0x80070005")
+              "requiresElevation")
+(check-equal? (classify-fltmc-result 0 "") "ok")
+
+;; Console tools emit the ANSI code page; on a Chinese system the captured
+;; GBK bytes of 拒绝访问 must decode to it (the latin-1 capture made every
+;; message pattern miss). UTF-8 children pass through untouched.
+(check-equal? (decode-console-bytes (string->bytes/utf-8 "路径 ok")) "路径 ok")
+(when (and (eq? (system-type 'os) 'windows)
+           (regexp-match? #px"^zh" (system-language+country)))
+  (check-equal? (decode-console-bytes (bytes #xbe #xdc #xbe #xf8 #xb7 #xc3 #xce #xca))
+                "拒绝访问"))
+
+;; fltmc's header and rule lines are not filter names and must not reach
+;; the keyword pass.
+(check-equal?
+ (filter-row-names
+  (hash 'stdout (string-append
+                 "Filter Name                 Num Instances    Max Instance    Altitude      Frame\r\n"
+                 "-------------------------  -------------    ------------    --------      -----\r\n"
+                 "TsdEncryptMF               1                1               149998.1       0\r\n")))
+ '("TsdEncryptMF"))
+
+;; The service Group is the authoritative encryption-class signal; names
+;; only add hints.
+(define group-rows
+  (list (hash 'name "TsdEncryptMF" 'altitudes '("149998.1") 'group "FSFilter Encryption" 'start 1)
+        (hash 'name "WdFilter" 'altitudes '("328010") 'group "FSFilter Anti-Virus" 'start 3)
+        (hash 'name "eeCtrl" 'altitudes '("329010") 'group #f 'start 1)))
+(check-equal? (encryption-group-filters group-rows) '("TsdEncryptMF"))
+(check-equal? (encryption-group-filters '()) '())
 
 ;; registry filter parsing: group instances per service, keep order
 (define sample-reg-output

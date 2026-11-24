@@ -25,7 +25,7 @@ raco rivet package
 raco rivet verify
 ```
 
-`doctor` runs fixed, read-only `fltmc.exe filters` and `fltmc.exe instances`; it does not change drivers. `scan` reads the requested file or directory and inspects at most **200** files in one GUI operation, returning only a summary without source paths or document content. Invalid files, skipped entries and permission failures must not be conflated with plaintext. A path can contain sensitive data; do not paste GUI screenshots showing real paths into public issues.
+`doctor` enumerates registered minifilters read-only through the registry API (altitude, `Group`, `Start`) and additionally runs fixed, read-only `fltmc.exe filters` and `fltmc.exe instances`; it does not change drivers. Because the enumeration result is never a verdict on the encryption state, the Diagnostics result bar is informational, not a green success. `scan` reads the requested file or directory and inspects at most **200** files in one GUI operation, returning only a summary without source paths or document content. Invalid files, skipped entries and permission failures must not be conflated with plaintext. A path can contain sensitive data; do not paste GUI screenshots showing real paths into public issues.
 
 ## Authorized-export UI (development preview)
 

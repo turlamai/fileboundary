@@ -11,7 +11,7 @@
 - **已发布（v0.2.0）**：`decrypt`（封装 OOXML 逐条目 CRC 验证重组；封装 PDF 语义头按对象原始偏移重建——经典表与压缩 xref 流条目保持一致——并做全文档 xref 抽查；损失清点在幸存 xref 流可解时读取权威对象清单——`headLost` 列出被壳头部区物理摧毁的对象，`danglingRefs` 列出无任何重建对象可解析的悬空引用，非空时以 `unresolvedRefs` 告警暴露，绝不静默产出空白页）、wrapped 普通 zip 档案（逐条目 CRC 验证，内部带壳文件同一遍解密；按条目评估壳区损伤——本地头落在壳区 512 字节内但数据区完好越过壳区的成员，从中心目录重建并恢复，字节确实无处存在的条目以 lostEntries 报告、绝不伪造）、`pad twin`（一对对齐明文/密文恢复策略 pad）、以及自更新通道（`update now` 对接 GitHub Releases，支持私有资产认证与带守卫的增量包）。发布物含源码分发 + manifest；空目录经线上通道 0.0.0 → 0.2.0 已端到端验证。
 - **已实现、本机已验证**：完整测试套件（442 项 + JSON Schema 契约校验）在 Windows 全绿（两个符号链接 fixture 测试需要提权 shell 或 Windows 开发人员模式才能创建链接），含三个 pin 定真实样本的端到端解密（[ADR-0007](docs/decisions/ADR-0007-real-wrapped-decryption-fixtures.md)）。CI 在每个 PR 与 main 上运行 Racket 核心与 WinUI 宿主检查。
 - **发布列车**（[#9](https://github.com/turlamai/fileboundary/issues/9)、[ADR-0008](docs/decisions/ADR-0008-release-channel-and-self-update.md)）：打 tag 触发 [release 工作流](.github/workflows/release.yml)，构建便携包、自更新全量包 + `manifest.json`、源码包、`SHA256SUMS.txt` 与逐文件校验和，对产物做冒烟（净目录解压、GUI 启动探针、CLI 信封、净安装根 update-apply），并以英文说明发布私有 Release。按 ADR-0010（修订 ADR-0008），**MSI 为主要安装面**；便携 zip 与显式自更新命令继续保留。
-- GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。每个路径输入框既支持浏览选择，也支持直接拖入文件。
+- GUI 已带只读扫描、过滤驱动诊断、Check Export、**Decrypt 解密面板**与 **Pad Twin 面板**，全部走与 CLI 相同的引擎入口（[#34](https://github.com/turlamai/fileboundary/issues/34)，已关闭）。每个路径输入框既支持浏览选择，也支持直接拖入文件。解密面板自动生成的 `<原名>_decrypted.<扩展名>` 输出路径跟随输入：加密输入框每次变化（包括清空）都会重新生成；你手动改过的输出路径会保留。
 
 既有 C#/WinForms v0.1 仅是仓库外的参考原型，并非正式技术选型（见 [Issue #1](https://github.com/turlamai/fileboundary/issues/1)）。
 
@@ -149,7 +149,7 @@ GUI 能做的，CLI 都能做——agent 对等是架构不变式，不是可选
 
 ## Windows 过滤驱动诊断（开发预览）
 
-Windows 控制台执行 `racket src/cli.rkt doctor`。目前只会执行限时、限输出（每路最多 64 KiB、8 秒超时）的只读命令 `fltmc.exe filters` 和 `fltmc.exe instances`，分别报告退出状态、是否截断、是否超时。权限不足或命令失败**不能**解释为系统没有过滤驱动；此时会返回 `partial`（退出码 1）。更全面的驱动、服务和进程模块检查仍在规划中。
+Windows 控制台执行 `racket src/cli.rkt doctor`。该命令只读：通过注册表 API 枚举已注册的 minifilter（`HKLM\SYSTEM\CurrentControlSet\Services\*\Instances\*\Altitude`，并读取每个服务的 `Group` 与 `Start`；`reg.exe` 仅作限时 60 秒的回退路径），把 `Group` 为 `FSFilter Encryption` 的驱动单独列出；同时执行限时、限输出（每路最多 64 KiB、8 秒超时）的只读命令 `fltmc.exe filters` 和 `fltmc.exe instances`，分别报告退出状态、是否截断、是否超时。权限不足或命令失败**不能**解释为系统没有过滤驱动；摘要会明确指出哪些枚举不完整，此时返回 `partial`（退出码 1）。按名称匹配只是启发式提示；更全面的驱动、服务和进程模块检查仍在规划中。
 
 ## 许可
 

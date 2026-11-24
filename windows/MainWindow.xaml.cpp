@@ -152,6 +152,11 @@ MainWindow::MainWindow() {
                         reinterpret_cast<DWORD_PTR>(this));
   }
   // Comfortable default; the layout is fluid and scrolls on smaller sizes.
+  // The generated decrypt output follows the encrypted input, including
+  // when the input is cleared (SyncDecryptOutput keeps operator edits).
+  DecryptInputBox().TextChanged(
+      Microsoft::UI::Xaml::Controls::TextChangedEventHandler(
+          this, &MainWindow::DecryptInput_TextChanged));
   AppWindow().ResizeClient(winrt::Windows::Graphics::SizeInt32{980, 660});
   // WinUI shows a generic placeholder in the title bar unless the
   // window is handed an icon explicitly; rivet embeds the project
@@ -280,26 +285,38 @@ namespace {
 
 // Auto-generate the decrypt output path from the input path:
 // <dir>\<basename>_decrypted<ext>, same directory as the input.
+//
+// The generated value is "owned" by the input only while the output box
+// still shows the last generated value; a path the operator typed is left
+// alone. Clearing the input therefore clears the generated output with
+// it - a stale output path belonging to no input reads as pending work.
 void FillDecryptOutput(Microsoft::UI::Xaml::Controls::TextBox const& input_box,
-                       Microsoft::UI::Xaml::Controls::TextBox const& output_box) {
+                       Microsoft::UI::Xaml::Controls::TextBox const& output_box,
+                       std::wstring& auto_value) {
   auto path = std::wstring{input_box.Text()};
   auto last_slash = path.find_last_of(L'\\');
   if (last_slash == std::wstring::npos)
     last_slash = path.find_last_of(L'/');
-  if (last_slash == std::wstring::npos) return;
-  auto dir = path.substr(0, last_slash + 1);
-  auto name = path.substr(last_slash + 1);
-  auto dot = name.find_last_of(L'.');
-  auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
-  auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
-  output_box.Text(dir + basename + L"_decrypted" + ext);
+  std::wstring generated;
+  if (last_slash != std::wstring::npos) {
+    auto dir = path.substr(0, last_slash + 1);
+    auto name = path.substr(last_slash + 1);
+    auto dot = name.find_last_of(L'.');
+    auto basename = (dot != std::wstring::npos) ? name.substr(0, dot) : name;
+    auto ext = (dot != std::wstring::npos) ? name.substr(dot) : L"";
+    generated = dir + basename + L"_decrypted" + ext;
+  }
+  if (output_box.Text().empty() || output_box.Text() == auto_value) {
+    output_box.Text(generated);
+  }
+  auto_value = generated;
 }
 
 // Picks an encrypted file and fills both the input and the auto-generated
-// output TextBox: <dir>\<basename>_decrypted.<ext> in the same directory.
+// output TextBox: <dir>\<basename>_decrypted.<ext> in the same directory
+// (the output follows through the input box's TextChanged handler).
 winrt::fire_and_forget PickDecryptInputAndFillOutput(
     Microsoft::UI::Xaml::Controls::TextBox input_box,
-    Microsoft::UI::Xaml::Controls::TextBox output_box,
     HWND hwnd,
     Microsoft::UI::Dispatching::DispatcherQueue dq) {
   try {
@@ -307,10 +324,10 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
     picker.FileTypeFilter().ReplaceAll({L"*"});
     picker.as<::IInitializeWithWindow>()->Initialize(hwnd);
     auto file = co_await picker.PickSingleFileAsync();
-    dq.TryEnqueue([input_box, output_box, file]() mutable {
-      if (!file) return;
-      input_box.Text(std::wstring{file.Path()});
-      FillDecryptOutput(input_box, output_box);
+    dq.TryEnqueue([input_box, file]() mutable {
+      if (file) {
+        input_box.Text(std::wstring{file.Path()});
+      }
     });
   } catch (...) {
   }
@@ -388,8 +405,7 @@ winrt::fire_and_forget DropFileIntoBox(
       } else if (box && !path.empty()) {
         box.Text(path);
         if (box == window->DecryptInputBox()) {
-          FillDecryptOutput(window->DecryptInputBox(),
-                            window->DecryptOutputBox());
+          window->SyncDecryptOutput();
         }
       }
     }
@@ -462,12 +478,10 @@ void MainWindow::BrowseVerifyExport_Click(
 void MainWindow::BrowseDecryptInput_Click(
     winrt::Windows::Foundation::IInspectable const&,
     Microsoft::UI::Xaml::RoutedEventArgs const&) {
-  // Picking the encrypted file also auto-fills the output path via
-  // PickDecryptInput (a fire_and_forget below): same directory,
+  // Picking the encrypted file also auto-fills the output path (the
+  // input box's TextChanged handler regenerates it): same directory,
   // same basename + "_decrypted", same extension.
-  PickDecryptInputAndFillOutput(
-      DecryptInputBox(), DecryptOutputBox(),
-      WindowHandle(), DispatcherQueue());
+  PickDecryptInputAndFillOutput(DecryptInputBox(), WindowHandle(), DispatcherQueue());
 }
 
 void MainWindow::BrowseDecryptPad_Click(
@@ -562,8 +576,20 @@ void MainWindow::HandleWin32Drop(HDROP drop) {
   }
   box.Text(path);
   if (box == DecryptInputBox()) {
-    FillDecryptOutput(DecryptInputBox(), DecryptOutputBox());
+    SyncDecryptOutput();
   }
+}
+
+void MainWindow::SyncDecryptOutput() {
+  FillDecryptOutput(DecryptInputBox(), DecryptOutputBox(), decrypt_auto_output_);
+}
+
+void MainWindow::DecryptInput_TextChanged(
+    winrt::Windows::Foundation::IInspectable const&,
+    winrt::Microsoft::UI::Xaml::Controls::TextChangedEventArgs const&) {
+  // Every input change - typed, dropped, picked - keeps the generated
+  // output in step with it, including the change to empty.
+  SyncDecryptOutput();
 }
 
 winrt::Microsoft::UI::Xaml::Controls::TextBox MainWindow::DropTargetBox(
@@ -765,7 +791,10 @@ void MainWindow::RunDoctorAsync() {
                 window->ShowTextResult(
                     L"诊断完成",
                     winrt::to_hstring(message),
-                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Success,
+                    // Enumeration is never a success verdict: the body
+                    // itself says what is incomplete, so the bar stays
+                    // neutral instead of green.
+                    Microsoft::UI::Xaml::Controls::InfoBarSeverity::Informational,
                     L"诊断完成：这只是枚举结果，不代表加密状态。");
               }
             });
