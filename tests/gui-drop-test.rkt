@@ -68,6 +68,7 @@
         #rx"box\\.Text\\("
         #rx"ShowTextResult\\("
         #rx"FillDecryptOutput\\("
+        #rx"SyncDecryptOutput\\("
         #rx"try_as<"))
 
 (define (brace-delta line)
@@ -119,3 +120,16 @@
 (check-false (regexp-match? #rx"&" signature)
              (format "DropFileIntoBox must not take reference parameters (they dangle across the co_await): ~a"
                      (string-trim signature)))
+
+;; ---- the generated decrypt output must follow its input ---------------
+;;
+;; The output path generated from the encrypted input belongs to that input.
+;; It is regenerated on every change of the input box - typed, dropped, or
+;; picked - so clearing the input clears the output with it, while an output
+;; path the operator typed is kept.
+(check-true (string-contains? cpp "DecryptInputBox().TextChanged(")
+            "the decrypt input must re-sync the generated output on every change")
+(check-true (string-contains? cpp "output_box.Text() == auto_value")
+            "a generated output is replaced, an operator edit is kept")
+(check-true (string-contains? cpp "DecryptOutputBox(), decrypt_auto_output_)")
+            "the sync must track the last generated output")

@@ -9,7 +9,8 @@
          racket/list
          racket/port
          racket/string
-         "winproc.rkt")
+         "winproc.rkt"
+         "winreg.rkt")
 
 (provide doctor-report
          run-fltmc
@@ -20,6 +21,8 @@
          registry-filters
          parse-registry-filters
          signature-heuristics
+         encryption-group-filters
+         filter-row-names
          probe-file!
          report->jsexpr
          write-report!)
@@ -51,6 +54,10 @@
 (define (classify-fltmc-result exit-code combined-output [timed-out? #f])
   (cond
     [timed-out? "timedOut"]
+    ;; The HRESULT decides first: `fltmc instances` exits 0 on a denied
+    ;; query (Windows 11 24H2) and the text is GBK on Chinese Windows,
+    ;; which the capture cannot rely on. 0x80070005 is E_ACCESSDENIED.
+    [(regexp-match? #rx"(?i:0x80070005)" combined-output) "requiresElevation"]
     [(and (exact-integer? exit-code) (zero? exit-code)) "ok"]
     ;; fltmc speaks the process UI language: Chinese Windows emits
     ;; 拒绝访问 rather than the English strings, and misclassifying
@@ -171,7 +178,8 @@
      (append (filter-row-names filters)
              (family-names registry 'filters))
      (family-names driver-services 'drivers)
-     (family-names processes 'processes)))
+     (family-names processes 'processes)
+     (encryption-group-filters (hash-ref registry 'filters '()))))
   (define probe-entry
     (and probe-path
          (with-handlers ([exn:fail?
@@ -192,8 +200,13 @@
         (hash-set checks 'probeFile probe-entry)
         checks))
   (hash 'checks checks-with-probe
+        ;; The envelope-level partial/exit-1 contract is unchanged: any
+        ;; check that did not complete (elevation-gated fltmc included)
+        ;; degrades the report. The registry listing joins the condition
+        ;; because it is the primary inventory.
         'degraded (or (not (equal? (hash-ref filters 'status) "ok"))
-                      (not (equal? (hash-ref instances 'status) "ok")))
+                      (not (equal? (hash-ref instances 'status) "ok"))
+                      (not (equal? (hash-ref registry 'status) "ok")))
         'evidence "measured"
         'scope "read-only-diagnostics"))
 
@@ -204,25 +217,45 @@
 ;; readable without elevation — unlike `fltmc filters`, which fails
 ;; for a plain user. This is the primary filter listing; fltmc stays
 ;; as the (elevation-gated) runtime view.
+;;
+;; Primary path: the registry API (winreg.rkt) - no child process, no
+;; timeout, and it also reads the service Group and Start type. The
+;; `reg query /s /f Altitude` walk is the fallback only: it takes 10+ s
+;; on a developer machine, so the 8 s budget killed it and the listing
+;; silently ended half-way through the alphabet.
 (define (registry-filters)
   (define started (now-ms))
   (cond
     [(not (eq? (system-type 'os) 'windows))
      (blank-result "unsupportedPlatform" started)]
     [else
-     (define executable
-       (or (find-executable-path "reg.exe")
-           (and (file-exists? "C:/Windows/System32/reg.exe")
-                (string->path "C:/Windows/System32/reg.exe"))))
-     (if (not executable)
-         (blank-result "toolUnavailable" started)
-         (let ((r (run-bounded-child
-                   executable
-                   (list "query" "HKLM\\SYSTEM\\CurrentControlSet\\Services"
-                         "/s" "/f" "Altitude"))))
-           (define rows (parse-registry-filters (hash-ref r 'stdout "")))
-           (hash-set (hash-set r 'filterCount (length rows))
-                     'filters rows)))]))
+     (define api-rows
+       (with-handlers ([exn:fail? (lambda (_) #f)])
+         (registry-minifilters)))
+     (cond
+       [api-rows
+        (define r (hash-set (blank-result "ok" started)
+                            'durationMs (max 0 (- (now-ms) started))))
+        (hash-set (hash-set (hash-set r 'filters api-rows) 'filterCount (length api-rows))
+                  'source "registry-api")]
+       [else
+        (define executable
+          (or (find-executable-path "reg.exe")
+              (and (file-exists? "C:/Windows/System32/reg.exe")
+                   (string->path "C:/Windows/System32/reg.exe"))))
+        (if (not executable)
+            (hash-set (blank-result "toolUnavailable" started) 'source "reg.exe")
+            (let* ((r (run-bounded-child
+                       executable
+                       (list "query" "HKLM\\SYSTEM\\CurrentControlSet\\Services"
+                             "/s" "/f" "Altitude")
+                       ;; a full walk of the Services tree; a cut-off
+                       ;; listing is worse than a slow one
+                       60))
+                   (rows (parse-registry-filters (hash-ref r 'stdout ""))))
+              (hash-set (hash-set (hash-set r 'filterCount (length rows))
+                                  'filters rows)
+                        'source "reg.exe")))])]))
 
 ;; reg query output shape: a key line
 ;;   HKEY_LOCAL_MACHINE\...\Services\<svc>\Instances\<inst>
@@ -314,15 +347,28 @@
 
 ;; ---------- family 4: signature heuristics ----------
 
+;; The authoritative encryption-class signal: Windows assigns every
+;; minifilter service a Group, and transparent-encryption filters sit in
+;; "FSFilter Encryption". Registered rows carry it (winreg.rkt); the
+;; reg.exe fallback rows do not, in which case this yields nothing.
+(define (encryption-group-filters rows)
+  (for/list ([row (in-list rows)]
+             #:when (and (hash? row)
+                         (hash-ref row 'group #f)
+                         (string-ci=? (hash-ref row 'group) "FSFilter Encryption")))
+    (hash-ref row 'name)))
+
 ;; Name-based matching over the collected families. ALWAYS a heuristic:
 ;; a matching name suggests transparent-encryption involvement and never
 ;; proves it. Keywords stay deliberately short and generic.
 (define heuristic-keywords
-  (list "esafenet" "dlp" "safedog" "huorong" "titanagent" "qax"
+  (list "esafenet" "cdg" "tsdencrypt" "dlp" "safedog" "huorong" "titanagent" "qax"
         ;; transparent-encryption products seen in the field; the bare
         ;; "edr" substring used to false-positive on QWAVEdrv and
-        ;; WindowsTrustedRT, so it is deliberately absent
-        "ahflt" "titan"))
+        ;; WindowsTrustedRT, so it is deliberately absent. "ahflt" was
+        ;; removed after it flagged Microsoft's signed AntiHack filter
+        ;; driver on the machine that reported it.
+        "titan"))
 
 (define (family-names family-check key)
   (if (not (hash? family-check))
@@ -331,22 +377,28 @@
         (if (hash? r) (hash-ref r 'name "") (format "~a" r)))))
 
 ;; fltmc output is fixed-format text, not CSV: pull the filter/instance
-;; names out of the captured lines for the heuristic pass.
+;; names out of the captured lines for the heuristic pass. The column
+;; header and the rule line under it are not names.
 (define (filter-row-names filters-check)
   (define text (if (hash? filters-check)
                    (hash-ref filters-check 'stdout "")
                    ""))
-  (for/list ([line (in-list (string-split text "\r\n"))]
-             #:when (>= (string-length (string-trim line)) 3))
+  (for/list ([line (in-list (string-split text "\n"))]
+             #:when (let ([t (string-trim line)])
+                      (and (>= (string-length t) 3)
+                           (not (string-prefix? t "-"))
+                           (not (string-ci=? (car (string-split t " ")) "Filter")))))
     (car (string-split (string-trim line) " "))))
 
-(define (signature-heuristics filter-names driver-names process-names)
+(define (signature-heuristics filter-names driver-names process-names
+                              [encryption-group '()])
   (define matches
     (for/list ((name (in-list (append filter-names driver-names process-names)))
                #:when (for/or ((kw (in-list heuristic-keywords)))
                  (string-contains? (string-downcase name) kw)))
       name))
   (hash 'status "ok"
+        'encryptionGroup encryption-group
         'matchedNames (remove-duplicates matches)
         'keywords heuristic-keywords
         'evidence "heuristic"))

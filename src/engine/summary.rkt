@@ -38,42 +38,58 @@
           skipped
           (if truncated? "yes" "no")))
 
-(define (doctor-summary)
-  (define report (doctor-report))
+;; Operator-facing text for the Diagnostics panel. Leads with the
+;; encryption-class filters (service Group = FSFilter Encryption, the
+;; authoritative class signal), then the full registered inventory, then
+;; the name heuristics. An incomplete registry listing says so on its own
+;; line - a truncated listing once read "19 registered filters" with the
+;; encryption filter in the dropped half of the alphabet.
+(define (doctor-summary [report (doctor-report)])
   (define checks (hash-ref report 'checks))
   (define (status name)
-    (hash-ref (hash-ref checks name) 'status))
-  (define registry (hash-ref checks 'registryFilters))
-  (define filters
-    (for/list ([f (in-list (hash-ref registry 'filters null))])
-      (format "~a (altitude ~a)"
-              (hash-ref f 'name)
-              (string-join
-               (hash-ref f 'altitudes null) "/"))))
-  (define heuristics (hash-ref checks 'signatureHeuristics))
-  (define matched (hash-ref heuristics 'matchedNames null))
+    (hash-ref (hash-ref checks name 'hash) 'status "missing"))
+  (define registry (hash-ref checks 'registryFilters (hash)))
+  (define rows (hash-ref registry 'filters '()))
+  (define registry-ok? (equal? (hash-ref registry 'status #f) "ok"))
+  (define (render f)
+    (format "  ~a (altitude ~a~a~a)~a"
+            (hash-ref f 'name)
+            (string-join (hash-ref f 'altitudes '("?")) "/")
+            (if (hash-ref f 'group #f) (format ", group ~a" (hash-ref f 'group)) "")
+            (if (hash-ref f 'start #f) (format ", start ~a" (hash-ref f 'start)) "")
+            (if (member (hash-ref f 'name) '("FileCrypt" "aksdf")) " - Windows inbox" "")))
+  (define encryption-names (encryption-group-filters rows))
+  (define encryption-rows
+    (filter (lambda (f) (member (hash-ref f 'name) encryption-names)) rows))
+  (define heuristics (hash-ref checks 'signatureHeuristics (hash)))
+  (define matched (hash-ref heuristics 'matchedNames '()))
+  (define fltmc-line
+    (format "Filter Manager runtime view (needs administrator): filters ~a, instances ~a."
+            (status 'filters) (status 'instances)))
   (format (string-append
-           "Read-only diagnostics. The driver list below needs no administrator.\n"
+           "Read-only diagnostics: enumeration only. Nothing here proves that any file is recoverable.\n"
+           "Encryption-group filter drivers (Group = FSFilter Encryption): ~a\n~a\n"
            "Registered filter drivers: ~a\n~a\n"
-           "Heuristic matches for known encryption/EDR products: ~a\n"
-           "Filter Manager runtime listing (needs administrator): filters ~a, instances ~a.\n"
+           "Heuristic name matches (suggestive only): ~a\n"
            "~a\n"
-           "A name on this list suggests transparent-encryption involvement; it does not prove any file is recoverable.")
-          (hash-ref registry 'filterCount 0)
-          (if (null? filters)
+           "~a")
+          (length encryption-rows)
+          (if (null? encryption-rows) "  (none found)" (string-join (map render encryption-rows) "\n"))
+          (if registry-ok?
+              (format "~a" (hash-ref registry 'filterCount (length rows)))
+              (format "~a shown of an INCOMPLETE listing (registry query status: ~a)"
+                      (length rows) (hash-ref registry 'status)))
+          (if (null? rows)
               "  (none found)"
-              (string-join
-               (for/list ([f (in-list filters)])
-                 (string-append "  " f))
-               "\n"))
-          (if (null? matched)
-              "none"
-              (string-join matched ", "))
-          (status 'filters)
-          (status 'instances)
-          (if (hash-ref report 'degraded)
-              "Runtime listing incomplete without administrator rights; the registry list above is already complete for what is REGISTERED."
-              "Enumeration commands completed; this is not proof of file recovery.")))
+              (string-join (map render rows) "\n"))
+          (if (null? matched) "none" (string-join matched ", "))
+          fltmc-line
+          (cond
+            [(not registry-ok?)
+             "INCOMPLETE: the registered-filter listing did not finish; filters missing from it are unknown, not absent."]
+            [(hash-ref report 'degraded #f)
+             "Registry listing complete. Runtime view unavailable without administrator rights; this is not proof of file recovery."]
+            [else "Enumeration completed; this is not proof of file recovery."])))
 
 ;; A presentation-friendly view of the same read-only authorized-export check
 ;; used by the JSON CLI. Never expose sensitive path names or file contents.

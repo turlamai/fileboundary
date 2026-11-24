@@ -90,6 +90,13 @@ struct MainWindow : MainWindowT<MainWindow> {
   winrt::Microsoft::UI::Xaml::Controls::TextBox DropTargetBox(
       winrt::Windows::Foundation::Point const& pt);
 
+  // Regenerates the auto decrypt output from the encrypted input. Public
+  // for the free drop-handler coroutine, like ShowTextResult.
+  void SyncDecryptOutput();
+  void DecryptInput_TextChanged(
+      winrt::Windows::Foundation::IInspectable const& sender,
+      Microsoft::UI::Xaml::Controls::TextChangedEventArgs const& args);
+
  private:
   winrt::fire_and_forget InitializeBackendAsync();
   void RunScanAsync();
@@ -141,6 +148,10 @@ struct MainWindow : MainWindowT<MainWindow> {
   // selection): decides which box an off-target Explorer drop falls
   // back to in DropTargetBox.
   std::wstring current_panel_tag_ = L"scan";
+  // The last output path generated for the decrypt input; while the output
+  // box still shows it, the output is treated as generated (and follows the
+  // input); anything else is an operator edit and is kept.
+  std::wstring decrypt_auto_output_;
   // Update flow state: one active download, its start time (the host-side
   // 30-min watchdog), the auto-check toggle, and the progress poll timer.
   bool update_downloading_ = false;
