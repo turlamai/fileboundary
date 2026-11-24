@@ -318,10 +318,11 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 
 // Drop target shared by every path TextBox: take the first dropped
 // storage item, fill the box, and keep the decrypt output in sync when
-// the dropped-onto box is the encrypted-input one. GetStorageItemsAsync
-// may resume off the UI thread - completion hops via TryEnqueue. Non-file
-// payloads fail the async call and stay silent; this projection has no
-// StandardDataFormats probe to pre-filter them.
+// the dropped-onto box is the encrypted-input one. This is the XAML/OLE
+// channel; Explorer drops normally arrive through the WM_DROPFILES
+// subclass in the constructor instead (HandleWin32Drop), which is
+// synchronous and already on the UI thread. Both channels may fire for
+// the same drop, so filling the box here is idempotent.
 //
 // The Drop handler MUST take a deferral around the async read: the OLE
 // drag-drop machinery tears the data object down once the Drop handler
@@ -331,29 +332,44 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 // Win32 WM_DROPFILES channel was proven fine by synthetic tests).
 // GetDeferral() keeps the drag-drop session alive until Complete(), so
 // the async read always sees a live data object.
+//
+// Threading rule: GetStorageItemsAsync resumes this coroutine on a
+// threadpool thread, and every XAML object involved (the deferral, the
+// sender TextBox, the window) is apartment-bound to the UI thread.
+// Calling any of them from the resumed thread raises RPC_E_WRONG_THREAD
+// and fails the process fast in the middle of the drop - the crash behind
+// "dropping a file freezes the window and leaves the copy drag image on
+// screen". So the continuation only produces plain data (a path or a
+// failure flag) and hops back with TryEnqueue; the box, the InfoBar and
+// deferral.Complete() are only ever called inside the dispatcher lambda.
 winrt::fire_and_forget DropFileIntoBox(
     winrt::Windows::Foundation::IInspectable const& sender,
     winrt::Microsoft::UI::Xaml::DragEventArgs args,
     Microsoft::UI::Dispatching::DispatcherQueue dq,
     winrt::weak_ref<MainWindow> weak) {
   auto const deferral = args.GetDeferral();
+  std::wstring path;
+  bool failed = false;
   try {
     auto items = co_await args.DataView().GetStorageItemsAsync();
-    dq.TryEnqueue([sender, items, weak]() mutable {
-      auto window = weak.get();
-      auto box = sender.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
-      if (!window || !box || items.Size() == 0) return;
-      box.Text(std::wstring{items.GetAt(0).Path()});
-      if (box == window->DecryptInputBox()) {
-        FillDecryptOutput(window->DecryptInputBox(),
-                          window->DecryptOutputBox());
-      }
-    });
+    if (items.Size() != 0) path = std::wstring{items.GetAt(0).Path()};
   } catch (...) {
-    // A cancelled drop is not an error, but a failing read is: make it
-    // visible instead of leaving the user with a no-reaction drop.
-    dq.TryEnqueue([weak]() mutable {
-      if (auto window = weak.get()) {
+    // A cancelled drop is not an error, but a failing read is: report it
+    // from the UI thread below instead of leaving the user with a
+    // no-reaction drop.
+    failed = true;
+  }
+  // A false return means the dispatcher is shutting down (window closing);
+  // the deferral then dies with the window and nothing needs completing.
+  dq.TryEnqueue([sender, weak, deferral, path = std::move(path),
+                 failed]() mutable {
+    if (auto window = weak.get()) {
+      auto box = sender.try_as<Microsoft::UI::Xaml::Controls::TextBox>();
+      if (box && failed && box.Text().empty()) {
+        // Only report when nothing else filled the box: the WM_DROPFILES
+        // channel usually already did, and the OLE data object is often
+        // gone by the time this read runs - that is not an error for the
+        // user.
         window->ShowTextResult(
             L"拖入失败",
             winrt::hstring(
@@ -361,10 +377,16 @@ winrt::fire_and_forget DropFileIntoBox(
                 L"文件或网络位置），或用「浏览…」按钮选择。"),
             Microsoft::UI::Xaml::Controls::InfoBarSeverity::Warning,
             L"拖入的文件无法读取。");
+      } else if (box && !path.empty()) {
+        box.Text(path);
+        if (box == window->DecryptInputBox()) {
+          FillDecryptOutput(window->DecryptInputBox(),
+                            window->DecryptOutputBox());
+        }
       }
-    });
-  }
-  deferral.Complete();
+    }
+    deferral.Complete();
+  });
 }
 
 }  // namespace
