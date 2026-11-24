@@ -99,3 +99,23 @@
 
 (check-true (> complete-count 0)
             "the drop deferral must still be completed (or the OLE drop session hangs)")
+
+;; ---- coroutine parameters must not be references -----------------------
+;;
+;; A reference parameter only lives as long as the caller's frame. The XAML
+;; Drop handler returns as soon as the handler hits its first suspension, so
+;; any `T const&` parameter is a dangling reference when the continuation
+;; runs - copying it (e.g. into the TryEnqueue lambda) AddRefs a dead stack
+;; slot and crashes with an access violation in IUnknown::add_ref. Parameters
+;; that are still used after the await must be passed by value so that the
+;; coroutine frame owns a copy.
+(define signature-lines
+  (let loop ([i start] [acc '()])
+    (define line (list-ref lines i))
+    (if (string-suffix? line "{")
+        (reverse (cons line acc))
+        (loop (add1 i) (cons line acc)))))
+(define signature (string-join signature-lines " "))
+(check-false (regexp-match? #rx"&" signature)
+             (format "DropFileIntoBox must not take reference parameters (they dangle across the co_await): ~a"
+                     (string-trim signature)))

@@ -342,8 +342,16 @@ winrt::fire_and_forget PickDecryptInputAndFillOutput(
 // screen". So the continuation only produces plain data (a path or a
 // failure flag) and hops back with TryEnqueue; the box, the InfoBar and
 // deferral.Complete() are only ever called inside the dispatcher lambda.
+//
+// Lifetime rule: a reference parameter is only alive while the caller's
+// frame is, and FileBox_Drop returns at the first suspension. `IInspectable
+// const& sender` therefore pointed at a dead stack slot when the resumed
+// coroutine copied it into the lambda - AddRef on garbage, access
+// violation in IUnknown::add_ref (two 0.8.6 crash dumps, 2026-11-24).
+// Parameters that survive the await are passed by value so the coroutine
+// frame owns a copy.
 winrt::fire_and_forget DropFileIntoBox(
-    winrt::Windows::Foundation::IInspectable const& sender,
+    winrt::Windows::Foundation::IInspectable sender,
     winrt::Microsoft::UI::Xaml::DragEventArgs args,
     Microsoft::UI::Dispatching::DispatcherQueue dq,
     winrt::weak_ref<MainWindow> weak) {
